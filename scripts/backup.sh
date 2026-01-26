@@ -211,7 +211,7 @@ export_vault() {
     log_info "Autenticando con API Key..."
     export BW_CLIENTID="$BW_CLIENTID"
     export BW_CLIENTSECRET="$BW_CLIENTSECRET"
-    if ! bw login --apikey > /dev/null 2>&1; then
+    if ! bw login --apikey; then
         log_error "Login fallido. Verifica API Keys."
         return 1
     fi

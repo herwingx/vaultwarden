@@ -80,8 +80,8 @@ check_dependencies() {
     if [[ ${#missing[@]} -gt 0 ]]; then
         echo ""
         log_warning "Para instalar las dependencias faltantes:"
-        echo -e "  ${CYAN}Debian/Ubuntu:${NC} sudo apt install age rclone curl git && npm install -g @bitwarden/cli"
-        echo -e "  ${CYAN}Fedora:${NC} sudo dnf install age rclone curl git && npm install -g @bitwarden/cli"
+        echo -e "  ${CYAN}Debian/Ubuntu:${NC} sudo apt install age rclone curl git && npm install -g @bitwarden/cli@2024.1.0"
+        echo -e "  ${CYAN}Fedora:${NC} sudo dnf install age rclone curl git && npm install -g @bitwarden/cli@2024.1.0"
         return 1
     fi
 }

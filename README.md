@@ -76,12 +76,19 @@ sudo dnf install -y age rclone curl git
 ### 3. Bitwarden CLI (Para Backups)
 El script de backup usa el CLI oficial. Requiere Node.js:
 ```bash
-# Instalar BW CLI
-npm install -g @bitwarden/cli
+# Instalar BW CLI (Versión 2024.x requerida por compatibilidad)
+npm install -g @bitwarden/cli@2024.1.0
 
 # Verificar
 bw --version
 ```
+
+### 4. Solución de Problemas (Troubleshooting)
+
+**Error: `userDecryptionOptions is missing` durante el backup**
+Este es un error conocido con las versiones recientes de Bitwarden CLI (>2024.12) al conectar con Vaultwarden.
+*   **Solución:** Asegúrate de instalar la versión **2024.1.0** como se indica arriba.
+*   Alternativa: Cambia el algoritmo KDF en la web de Vaultwarden (Ajustes -> Seguridad) para regenerar las opciones de cifrado.
 
 ---
 
