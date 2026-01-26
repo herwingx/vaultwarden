@@ -57,8 +57,8 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_JSON="/tmp/vw_backup_${TIMESTAMP}.json"
 BACKUP_ENCRYPTED="/tmp/vw_backup_${TIMESTAMP}.json.age"
 
-BW_DATA_DIR=$(mktemp -d)
-export BITWARDENCLI_APPDATA_DIR="$BW_DATA_DIR"
+# BW_DATA_DIR=$(mktemp -d)
+# export BITWARDENCLI_APPDATA_DIR="$BW_DATA_DIR"
 
 # --- LÓGICA ---
 
@@ -142,7 +142,7 @@ upload_to_cloud() {
 
 cleanup() {
     rm -f "$BACKUP_JSON" "$BACKUP_ENCRYPTED" 2>/dev/null || true
-    rm -rf "$BW_DATA_DIR" 2>/dev/null || true
+    # rm -rf "$BW_DATA_DIR" 2>/dev/null || true
 }
 
 # --- MAIN ---
