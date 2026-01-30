@@ -142,10 +142,29 @@ Elige la que mejor se adapte a tu infraestructura:
 3. Copia el **Tunnel Token** en tu `docker-compose.yml`.
 4. Configura el hostname: `vault.tudominio.com` -> `http://vaultwarden:80`.
 
-### 🟣 Opción B: Tailscale
-1. Instala Tailscale: `curl -fsSL https://tailscale.com/install.sh | sh`.
-2. Habilita HTTPS en el panel de Tailscale.
-3. El acceso será vía `http://nombre-servidor:8080`.
+### 🟣 Opción B: Tailscale (VPN Privada)
+Ideal si quieres acceso seguro sin exponer nada a internet público. **Vaultwarden requiere HTTPS**, y Tailscale lo hace fácil.
+
+1.  **Preparar Docker**:
+    *   Edita `docker-compose.yml`.
+    *   **Descomenta** la sección `ports` para exponer el puerto 8080.
+    *   **Comenta o borra** el bloque del servicio `cloudflared` (no lo necesitas).
+    *   Reinicia: `./scripts/start.sh`.
+
+2.  **Configurar Tailscale**:
+    ```bash
+    # Instalar (si no lo tienes)
+    curl -fsSL https://tailscale.com/install.sh | sh
+    sudo tailscale up
+
+    # Habilitar HTTPS y proxy reverso automático (Magic!)
+    sudo tailscale cert
+    sudo tailscale serve --bg --https=443 localhost:8080
+    ```
+
+3.  **Acceso**:
+    *   Tu Vault estará disponible en: `https://nombre-maquina.tu-tailnet.ts.net`
+    *   Puedes ver la URL exacta con `tailscale status`.
 
 ---
 
