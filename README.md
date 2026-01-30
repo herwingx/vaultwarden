@@ -103,15 +103,17 @@ sudo chown -R $USER:$USER .
 ```
 
 ### 2. Ejecutar Asistente de Configuración
-Nuestro script inteligente configurará las claves y el cron automáticamente:
+Nuestro script inteligente detectará si eres un usuario nuevo o si estás restaurando un backup:
 ```bash
 chmod +x scripts/*.sh
 ./scripts/install.sh
 ```
+*   **Usuarios Nuevos:** El script generará una nueva identidad AGE y te ofrecerá crear un `.env` limpio.
+*   **Propietarios (Restore):** El script te alertará si falta tu llave maestra. Deberás restaurarla en `~/.age/vaultwarden.key` antes de continuar.
 
 ### 3. Configurar Entorno
 ```bash
-# El asistente creará un .env básico, edítalo:
+# Si eres usuario nuevo, edita el .env generado:
 nano .env
 ```
 
@@ -151,10 +153,16 @@ Elige la que mejor se adapte a tu infraestructura:
 
 Este proyecto no guarda passwords en texto plano. Usamos `.env.age` el cual está cifrado.
 
-### Flujo de Trabajo
+### Flujo para Usuarios Nuevos
+1. El instalador generará tu identidad en `~/.age/vaultwarden.key`.
+2. Crea tu `.env` con tus secretos.
+3. **Cifra tus secretos:** `./scripts/manage_secrets.sh encrypt`.
+4. Borra el archivo `.env` original (el script te lo ofrecerá).
+
+### Flujo de Trabajo Diario
 *   **Editar**: `./scripts/manage_secrets.sh edit` (Abre un editor temporal y re-cifra al salir).
 *   **Ver**: `./scripts/manage_secrets.sh view`.
-*   **Backup de Clave**: Ejecuta `./scripts/manage_secrets.sh show-key` y guarda el resultado en un gestor externo (Ej: Bitwarden Cloud personal). **SIN ESTA CLAVE NO PODRÁS RECUPERAR TUS BACKUPS.**
+*   **Backup de Clave**: Ejecuta `./scripts/manage_secrets.sh show-key` y guarda el resultado en un gestor externo (Ej: Bitwarden Cloud personal). **SIN ESTA CLAVE NO PODRÁS RECUPERAR TUS BACKUPS NI TU CONFIGURACIÓN.**
 
 ---
 

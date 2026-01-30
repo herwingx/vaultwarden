@@ -64,8 +64,16 @@ check_deps() {
 
 decrypt_to_env() {
     if [[ ! -f "$SECRETS_FILE" ]]; then
-        log_error "No se encontró ${BOLD}.env.age${NC}. Ejecuta primero el cifrado."
-        exit 1
+        if [[ -f "$ENV_FILE" ]]; then
+            log_warning "Se detectó .env pero no .env.age."
+            log_error "Por seguridad, debes cifrar tu configuración antes de iniciar."
+            echo -e "    Ejecuta: ${CYAN}./scripts/manage_secrets.sh encrypt${NC}"
+            exit 1
+        else
+            log_error "No se encontró configuración cifrada (${BOLD}.env.age${NC})."
+            echo -e "    ¿Ejecutaste el instalador? (${CYAN}./scripts/install.sh${NC})"
+            exit 1
+        fi
     fi
     
     local AGE_KEY

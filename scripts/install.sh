@@ -90,18 +90,40 @@ check_dependencies() {
 setup_env() {
     log_section "CONFIGURACIÓN DE ENTORNO"
     
-    if [[ -f "$PROJECT_DIR/.env" || -f "$PROJECT_DIR/.env.age" ]]; then
-        log_success "Archivo de configuración detectado."
+    # 1. Verificar si existe .env plano (Prioridad baja: se asume que el usuario sabe lo que hace)
+    if [[ -f "$PROJECT_DIR/.env" ]]; then
+        log_success "Archivo de configuración (.env) detectado."
         return 0
     fi
+
+    # 2. Verificar si existe .env.age y es descifrable
+    if [[ -f "$PROJECT_DIR/.env.age" ]]; then
+        local AGE_KEY
+        AGE_KEY=$(find_age_key) || true
+
+        if [[ -n "$AGE_KEY" ]]; then
+            if age -d -i "$AGE_KEY" "$PROJECT_DIR/.env.age" > /dev/null 2>&1; then
+                log_success "Archivo cifrado (.env.age) verificado correctamente."
+                return 0
+            else
+                log_warning "Se detectó .env.age pero tu clave actual no puede descifrarlo."
+                log_info "Esto es normal si acabas de clonar el repo."
+            fi
+        else
+            log_warning "Se detectó .env.age pero no tienes ninguna clave para descifrarlo."
+        fi
+    else
+        log_warning "No se encontró ningún archivo de configuración."
+    fi
     
-    log_warning "No se encontró el archivo .env"
-    read -p "    ¿Deseas crear uno nuevo desde la plantilla .env.example? [S/n]: " -r response
+    # 3. Crear nuevo .env si no pasamos las validaciones anteriores
+    read -p "    ¿Deseas inicializar una nueva configuración desde la plantilla? [S/n]: " -r response
     response=${response:-S}
     
     if [[ "$response" =~ ^[Ss]$ ]]; then
         cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
-        log_success "Archivo .env creado. Por favor, edítalo antes de iniciar."
+        log_success "Archivo .env creado exitosamente."
+        log_info "No olvides editarlo con tus credenciales antes de cifrar."
     fi
 }
 
@@ -192,10 +214,16 @@ full_install() {
     log_section "CONFIGURACIÓN DE SEGURIDAD"
     if ! find_age_key > /dev/null; then
         log_warning "No se detectó una clave AGE."
-        read -p "    ¿Generar una nueva clave maestra ahora? [S/n]: " -r response
+        echo -e "    ${YELLOW}➔ Si eres usuario nuevo:${NC} Genera una nueva identidad."
+        echo -e "    ${YELLOW}➔ Si estás restaurando:${NC} Cancela y copia tu backup a ${BOLD}~/.age/vaultwarden.key${NC}"
+        echo ""
+        read -p "    ¿Generar una nueva clave maestra ahora? (Responde 'n' para cancelar y restaurar manual) [S/n]: " -r response
         response=${response:-S}
         if [[ "$response" =~ ^[Ss]$ ]]; then
             "$SCRIPT_DIR/manage_secrets.sh" setup
+        else
+            log_info "Instalación pausada. Restaura tu clave y vuelve a ejecutar."
+            exit 0
         fi
     else
         log_success "Clave de seguridad detectada correctamente."
