@@ -78,11 +78,12 @@ docker compose version
 ### 2. Herramientas de Cifrado y Backup
 ```bash
 # Ubuntu / Debian
-sudo apt update && sudo apt install -y age rclone curl git tar
+sudo apt update && sudo apt install -y age rclone curl git tar sqlite3
 
 # Fedora / RHEL
-sudo dnf install -y age rclone curl git tar
+sudo dnf install -y age rclone curl git tar sqlite3
 ```
+*Tip: `sqlite3` es recomendado para realizar backups en caliente sin detener el servidor.*
 
 ### 3. Bitwarden CLI (Opcional pero Recomendado)
 Si deseas que tus backups incluyan un JSON portable compatible con Bitwarden Cloud:

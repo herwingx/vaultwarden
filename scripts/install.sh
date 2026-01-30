@@ -66,7 +66,7 @@ check_dependencies() {
     log_section "VERIFICANDO INFRAESTRUCTURA"
     
     local missing=()
-    local deps=("age" "rclone" "curl" "docker" "bw")
+    local deps=("age" "rclone" "curl" "docker" "bw" "sqlite3")
     
     for cmd in "${deps[@]}"; do
         if ! command -v "$cmd" &> /dev/null; then

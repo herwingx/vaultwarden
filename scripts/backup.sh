@@ -241,17 +241,27 @@ create_backup() {
     log_info "Respaldando base de datos..."
     local db_path="$DATA_DIR/db.sqlite3"
     
-    if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-        log_info "Contenedor activo. Intentando backup consistente (Hot method)..."
+    # Intentar hot backup usando sqlite3 local si está instalado
+    if command -v sqlite3 >/dev/null 2>&1; then
+        log_info "Usando sqlite3 local para backup consistente (Hot method)..."
+        if sqlite3 "$db_path" ".backup '$temp_dir/db.sqlite3'"; then
+            log_success "Hot backup realizado con éxito (sqlite3 .backup)."
+        else
+            log_warning "Fallo comando sqlite3 local. Copiando archivo directo."
+            cp "$db_path" "$temp_dir/db.sqlite3"
+        fi
+    # Si no hay sqlite3 local, intentar via docker (por si acaso tiene binario)
+    elif docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        log_info "Intentando backup via Docker..."
         if docker exec "$CONTAINER_NAME" sqlite3 /data/db.sqlite3 ".backup '/data/db_backup.sqlite3'" 2>/dev/null; then
             mv "$DATA_DIR/db_backup.sqlite3" "$temp_dir/db.sqlite3"
-            log_success "Hot backup realizado con éxito."
+            log_success "Hot backup realizado via Docker."
         else
-            log_warning "Fallo sqlite3 en docker. Copiando directo."
+            log_warning "No se encontró sqlite3 (ni local ni en docker). Copiando directo."
             cp "$db_path" "$temp_dir/db.sqlite3"
         fi
     else
-        log_info "Contenedor detenido. Copiando directo."
+        log_info "Backup en frío (Cold copy)."
         cp "$db_path" "$temp_dir/db.sqlite3"
     fi
 
