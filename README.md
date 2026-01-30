@@ -20,7 +20,7 @@
 - [🚀 Instalación Rápida](#-instalación-rápida)
 - [🌐 Opciones de Despliegue](#-opciones-de-despliegue)
 - [🔐 Gestión de Secretos (AGE)](#-gestión-de-secretos-age)
-- [💾 Backups y Recuperación](#-backups-y-recuperación)
+- [💾 Backups y Recuperación (Híbrido)](#-backups-y-recuperación-híbrido)
 - [📜 Referencia de Scripts](#-referencia-de-scripts)
 
 ---
@@ -67,28 +67,22 @@ docker compose version
 ### 2. Herramientas de Cifrado y Backup
 ```bash
 # Ubuntu / Debian
-sudo apt update && sudo apt install -y age rclone curl git
+sudo apt update && sudo apt install -y age rclone curl git tar
 
 # Fedora / RHEL
-sudo dnf install -y age rclone curl git
+sudo dnf install -y age rclone curl git tar
 ```
 
-### 3. Bitwarden CLI (Para Backups)
-El script de backup usa el CLI oficial. Requiere Node.js:
+### 3. Bitwarden CLI (Opcional pero Recomendado)
+Si deseas que tus backups incluyan un JSON portable compatible con Bitwarden Cloud:
 ```bash
-# Instalar BW CLI (Versión 2024.x requerida por compatibilidad)
+# Instalar BW CLI (v2024.1.0 recomendada)
 npm install -g @bitwarden/cli@2024.1.0
 
 # Verificar
 bw --version
 ```
-
-### 4. Solución de Problemas (Troubleshooting)
-
-**Error: `userDecryptionOptions is missing` durante el backup**
-Este es un error conocido con las versiones recientes de Bitwarden CLI (>2024.12) al conectar con Vaultwarden.
-*   **Solución:** Asegúrate de instalar la versión **2024.1.0** como se indica arriba.
-*   Alternativa: Cambia el algoritmo KDF en la web de Vaultwarden (Ajustes -> Seguridad) para regenerar las opciones de cifrado.
+*Si tienes problemas con `userDecryptionOptions is missing`, usa esta versión específica.*
 
 ---
 
@@ -108,8 +102,6 @@ Nuestro script inteligente detectará si eres un usuario nuevo o si estás resta
 chmod +x scripts/*.sh
 ./scripts/install.sh
 ```
-*   **Usuarios Nuevos:** El script generará una nueva identidad AGE y te ofrecerá crear un `.env` limpio.
-*   **Propietarios (Restore):** El script te alertará si falta tu llave maestra. Deberás restaurarla en `~/.age/vaultwarden.key` antes de continuar.
 
 ### 3. Configurar Entorno
 ```bash
@@ -120,21 +112,13 @@ nano .env
 | Variable | Descripción | Ejemplo |
 | :--- | :--- | :--- |
 | `BW_HOST` | URL donde estará tu Vault | `https://vault.midominio.com` |
-| `BW_PASSWORD` | Password de tu cuenta de Vault | `UnaPassMuyFuerte` |
+| `BW_PASSWORD` | Password de tu cuenta de Vault | `UnaPassMuyFuerte` (Para JSON Export) |
 | `RCLONE_REMOTE` | Destino de rclone | `gdrive:/Backups/Vault` |
 | `TELEGRAM_TOKEN` | Token de tu bot | `123456:ABC-DEF...` |
 
 ---
 
 ## 🌐 Opciones de Despliegue
-
-Elige la que mejor se adapte a tu infraestructura:
-
-| Opción | Nivel | Pros | Contras |
-| :--- | :---: | :--- | :--- |
-| **Cloudflare Tunnel** | ⭐⭐⭐ | Sin abrir puertos, SSL auto, super seguro. | Requiere dominio propio. |
-| **Tailscale** | ⭐⭐ | Red privada VPN, muy fácil. | HTTPS manual/complejo. |
-| **Directo / LProxy** | ⭐ | Control total, hosting local. | Debes abrir puertos (80/443). |
 
 ### 🔷 Opción A: Cloudflare Tunnel (Recomendada)
 1. Ve a [Cloudflare Zero Trust](https://one.dash.cloudflare.com/).
@@ -143,28 +127,8 @@ Elige la que mejor se adapte a tu infraestructura:
 4. Configura el hostname: `vault.tudominio.com` -> `http://vaultwarden:80`.
 
 ### 🟣 Opción B: Tailscale (VPN Privada)
-Ideal si quieres acceso seguro sin exponer nada a internet público. **Vaultwarden requiere HTTPS**, y Tailscale lo hace fácil.
-
-1.  **Preparar Docker**:
-    *   Edita `docker-compose.yml`.
-    *   **Descomenta** la sección `ports` para exponer el puerto 8080.
-    *   **Comenta o borra** el bloque del servicio `cloudflared` (no lo necesitas).
-    *   Reinicia: `./scripts/start.sh`.
-
-2.  **Configurar Tailscale**:
-    ```bash
-    # Instalar (si no lo tienes)
-    curl -fsSL https://tailscale.com/install.sh | sh
-    sudo tailscale up
-
-    # Habilitar HTTPS y proxy reverso automático (Magic!)
-    sudo tailscale cert
-    sudo tailscale serve --bg --https=443 localhost:8080
-    ```
-
-3.  **Acceso**:
-    *   Tu Vault estará disponible en: `https://nombre-maquina.tu-tailnet.ts.net`
-    *   Puedes ver la URL exacta con `tailscale status`.
+1. Descomenta `ports: "8080:80"` en `docker-compose.yml`.
+2. Habilita HTTPS mágico: `tailscale serve --bg --https=443 localhost:8080`.
 
 ---
 
@@ -172,34 +136,62 @@ Ideal si quieres acceso seguro sin exponer nada a internet público. **Vaultward
 
 Este proyecto no guarda passwords en texto plano. Usamos `.env.age` el cual está cifrado.
 
-### Flujo para Usuarios Nuevos
-1. El instalador generará tu identidad en `~/.age/vaultwarden.key`.
-2. Crea tu `.env` con tus secretos.
-3. **Cifra tus secretos:** `./scripts/manage_secrets.sh encrypt`.
-4. Borra el archivo `.env` original (el script te lo ofrecerá).
-
-### Flujo de Trabajo Diario
-*   **Editar**: `./scripts/manage_secrets.sh edit` (Abre un editor temporal y re-cifra al salir).
-*   **Ver**: `./scripts/manage_secrets.sh view`.
-*   **Backup de Clave**: Ejecuta `./scripts/manage_secrets.sh show-key` y guarda el resultado en un gestor externo (Ej: Bitwarden Cloud personal). **SIN ESTA CLAVE NO PODRÁS RECUPERAR TUS BACKUPS NI TU CONFIGURACIÓN.**
+*   **Editar Secrets**: `./scripts/manage_secrets.sh edit`
+*   **Ver Clave Maestra**: `./scripts/manage_secrets.sh show-key`
+    *   ⚠️ **GUARDA ESTA CLAVE**: Sin ella, tus backups son basura digital irrecuperable.
 
 ---
 
-## 💾 Backups y Recuperación
+## 💾 Backups y Recuperación (Híbrido)
 
-### El Script de Backup (`backup.sh`)
-*   Ejecuta `bw export` de forma aislada.
-*   Cifra el JSON resultante con tu clave pública AGE.
-*   Sube el archivo a la nube configurada en Rclone.
-*   Envía notificación a Telegram.
+Implementamos una estrategia de **Backup Híbrido** para máxima seguridad y flexibilidad.
 
-### Recuperación tras desastre
-Si tu servidor muere, sigue estos pasos en uno nuevo:
-1. Instala dependencias (`age`, `rclone`).
-2. Restaura tu clave privada en `~/.age/vaultwarden.key`.
-3. Descarga el backup: `rclone copy gdrive:Backup/Vault/vw_backup_... .`.
-4. Descifra: `age -d -i ~/.age/vaultwarden.key -o vault.json vw_backup_...age`.
-5. Importa el JSON en tu nueva instancia.
+### ¿Qué se respalda?
+Cada backup genera un archivo cifrado (`.tar.gz.age`) que contiene **DOS** niveles de seguridad:
+
+1.  📀 **System Backup (Copia Fiel)**:
+    *   `db.sqlite3`: La base de datos cruda.
+    *   `attachments/`: Tus fotos, PDFs y archivos adjuntos.
+    *   `config.json`: Configuraciones de tu servidor.
+    *   `rsa_key*`: Tus identidad criptográfica.
+    *   *Uso:* Restaurar tu servidor exactamente como estaba.
+
+2.  📄 **JSON Export (Portabilidad)**:
+    *   `vault_export.json`: Un archivo estándar de Bitwarden.
+    *   *Uso:* Importar tus contraseñas en Bitwarden Cloud u otro gestor si decides migrar.
+
+### Cómo Restaurar (Script Guiado)
+
+Hemos creado un script que automatiza todo el proceso de recuperación de desastres:
+
+```bash
+# 1. Trae tu archivo de backup (ej. desde Google Drive con rclone)
+rclone copy gdrive:Backup/Vault/vw_backup_timestamp.tar.gz.age .
+
+# 2. Ejecuta el restaurador
+./scripts/restore.sh vw_backup_timestamp.tar.gz.age
+```
+
+**El script hará lo siguiente:**
+1.  Descifrará el archivo usando tu clave AGE.
+2.  Detendrá el contenedor de forma segura.
+3.  **Hará un backup de tu carpeta `data` actual** (por si algo sale mal).
+4.  Reemplazará la base de datos y adjuntos.
+5.  Reiniciará el servidor.
+
+### ¿Cómo usar el JSON Portable?
+Si tu objetivo no es restaurar este servidor, sino **extraer tus datos** para irte a otro lado:
+
+1.  Descifra el backup manualmente:
+    ```bash
+    age -d -i ~/.age/vaultwarden.key -o backup.tar.gz backup.tar.gz.age
+    ```
+2.  Descomprime:
+    ```bash
+    tar -xzf backup.tar.gz
+    ```
+3.  Encontrarás el archivo `vault_export.json`. Este archivo se puede importar en la web de Bitwarden (Herramientas -> Importar).
+    *   ⚠️ **Advertencia:** Este JSON **NO** contiene tus archivos adjuntos ni configuraciones de servidor.
 
 ---
 
@@ -209,27 +201,15 @@ Si tu servidor muere, sigue estos pasos en uno nuevo:
 | :--- | :--- | :--- |
 | `install.sh` | Configuración inicial | Asistente interactivo. |
 | `start.sh` | Lanzador seguro | Levanta Docker y borra rastro de secretos. |
-| `backup.sh` | Ejecuta backup | Pantalla de estado y logs detallados. |
+| `backup.sh` | Backup Híbrido | Genera SQLite + JSON, cifra y sube a nube. |
+| `restore.sh` | Restauración | Recuperación guiada y segura desde backup. |
 | `manage_secrets.sh`| Toolset de AGE | Manejo completo de llaves y cifrado. |
 
 ---
 
 ## 🤝 Contribuciones y Open Source
 
-Este proyecto es 100% Open Source bajo licencia MIT. Si encuentras un bug o tienes una mejora:
-1. Haz un **Fork**.
-2. Crea una rama `feat/tu-mejora`.
-3. Envía un **Pull Request**.
-
----
-
-## 🛡️ FAQ
-
-**¿Es seguro guardar el backup en Google Drive?**
-Sí, el backup se cifra localmente con **AGE** antes de salir del servidor. Ni Google ni nadie sin tu clave privada puede ver el contenido.
-
-**¿Puedo usarlo sin dominio?**
-Sí, usa la opción de **Tailscale** o accede por IP local, pero ten en cuenta que las extensiones de navegador suelen requerir HTTPS para funcionar correctamente.
+Este proyecto es 100% Open Source bajo licencia MIT.
 
 ---
 <p align="center">Creado con ❤️ por <a href="https://github.com/herwingx">herwingx</a></p>

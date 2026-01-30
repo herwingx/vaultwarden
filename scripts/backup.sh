@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # =============================================================================
-# ☁️ VAULTWARDEN - CLOUD BACKUP SYSTEM
+# ☁️ VAULTWARDEN - HYBRID BACKUP SYSTEM
 # =============================================================================
-# Exportación, cifrado AGE y sincronización Cloud (Google Drive/S3/etc).
+# 1. System Backup (SQLite, Attachments, Config) -> For full self-hosted restore
+# 2. JSON Export (Bitwarden Compatible) -> For cloud migration/portability
 # =============================================================================
 
 set -euo pipefail
@@ -21,17 +22,19 @@ NC='\033[0m'
 # --- CONFIGURACIÓN DE DIRECTORIOS ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+DATA_DIR="$PROJECT_DIR/data"
 SECRETS_FILE="$PROJECT_DIR/.env.age"
 LOG_FILE="/var/log/vaultwarden_backup.log"
+CONTAINER_NAME="vaultwarden"
 
-# Si no tenemos permisos en /var/log, usar log local
+# Ajuste de log si no hay permisos
 if [[ ! -w "$(dirname "$LOG_FILE")" ]]; then
     LOG_FILE="$PROJECT_DIR/backup.log"
 fi
 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-BACKUP_JSON="/tmp/vw_backup_${TIMESTAMP}.json"
-BACKUP_ENCRYPTED="/tmp/vw_backup_${TIMESTAMP}.json.age"
+BACKUP_ARCHIVE="/tmp/vw_backup_${TIMESTAMP}.tar.gz"
+BACKUP_ENCRYPTED="/tmp/vw_backup_${TIMESTAMP}.tar.gz.age"
 
 # Ubicaciones de clave AGE
 AGE_KEY_LOCATIONS=(
@@ -42,7 +45,6 @@ AGE_KEY_LOCATIONS=(
 )
 
 # --- SISTEMA DE LOGGING ---
-# Combina el estilo visual con el guardado en archivo del script robusto
 log_to_file() {
     local level="$1"
     local message="$2"
@@ -78,18 +80,17 @@ log_error() {
 # --- BANNER ---
 show_banner() {
     echo -e "${YELLOW}"
-    echo "    █▄▄ ▄▀█ █▀▀ █▄▀ █░█ █▀█"
-    echo "    █▄█ █▀█ █▄▄ █░█ █▄█ █▀▀"
+    echo "    █░█ █▄▀ █▄▄ ▄▀█ █▀▀ █▄▀ █░█ █▀█"
+    echo "    █▀█ █░█ █▄█ █▀█ █▄▄ █░█ █▄█ █▀▀"
     echo -e "${NC}"
-    echo -e "    ${CYAN}Automated Cloud Backup System${NC}\n"
+    echo -e "    ${CYAN}Hybrid Backup System (System + JSON)${NC}\n"
 }
 
-# --- PREPARACIÓN DEL ENTORNO (CRÍTICO) ---
+# --- PREPARACIÓN DEL ENTORNO ---
 prepare_environment() {
-    # 1. Definir PATH para Cron
     export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
-    # 2. Buscar Node.js / NVM (Necesario para Bitwarden CLI)
+    # Encontrar Node/NVM para Bitwarden CLI
     local NVM_DIRS=(
         "$HOME/.nvm/versions/node"
         "/root/.nvm/versions/node"
@@ -105,9 +106,9 @@ prepare_environment() {
         fi
     done
 
-    # 3. Fallback para encontrar 'bw'
+    # 3. Fallback explícito para 'bw' binary
     if ! command -v bw &> /dev/null; then
-        for BW_PATH in /usr/local/bin/bw /usr/local/sbin/bw /usr/bin/bw; do
+        for BW_PATH in /usr/local/bin/bw /usr/local/sbin/bw /usr/bin/bw /opt/bitwarden/bw; do
             if [[ -x "$BW_PATH" ]]; then
                 export PATH="$(dirname "$BW_PATH"):$PATH"
                 break
@@ -115,8 +116,7 @@ prepare_environment() {
         done
     fi
 
-    # 4. AISLAMIENTO DE SESIÓN (CRUCIAL)
-    # Crea un entorno limpio para cada ejecución, evitando conflictos de sesión
+    # Aislamiento de sesión de Bitwarden CLI
     BW_DATA_DIR=$(mktemp -d)
     export BITWARDENCLI_APPDATA_DIR="$BW_DATA_DIR"
 }
@@ -124,7 +124,7 @@ prepare_environment() {
 # --- GESTIÓN DE DEPENDENCIAS ---
 check_dependencies() {
     local missing=()
-    for cmd in age bw rclone curl; do
+    for cmd in age rclone curl tar docker bw; do
         if ! command -v "$cmd" &> /dev/null; then
             missing+=("$cmd")
         fi
@@ -132,12 +132,12 @@ check_dependencies() {
     
     if [[ ${#missing[@]} -gt 0 ]]; then
         log_error "Dependencias faltantes: ${missing[*]}"
-        log_info "Instalar con: apt/dnf install age rclone curl && npm install -g @bitwarden/cli"
+        log_info "Asegúrate de tener instalado: Docker, Age, Rclone, Curl, Tar, Bitwarden CLI (bw)."
         exit 1
     fi
 }
 
-# --- LÓGICA DE SECRETOS Y CLAVES ---
+# --- SECRETOS Y CLAVES ---
 find_age_key() {
     for key_path in "${AGE_KEY_LOCATIONS[@]}"; do
         if [[ -n "$key_path" && -f "$key_path" ]]; then
@@ -161,14 +161,12 @@ load_secrets() {
     if [[ -n "$AGE_KEY" ]]; then
         DECRYPTED=$(age -d -i "$AGE_KEY" "$SECRETS_FILE" 2>/dev/null)
     elif [[ -n "${AGE_PASSPHRASE:-}" ]]; then
-         # Modo Passphrase seguro con FIFO
         local PASS_FIFO=$(mktemp -u)
         mkfifo -m 600 "$PASS_FIFO"
         echo "$AGE_PASSPHRASE" > "$PASS_FIFO" &
         DECRYPTED=$(age -d "$SECRETS_FILE" < "$PASS_FIFO" 2>/dev/null)
         rm -f "$PASS_FIFO"
     else
-        # Intento interactivo o fallo
         DECRYPTED=$(age -d "$SECRETS_FILE" 2>/dev/null) || true
     fi
 
@@ -177,102 +175,137 @@ load_secrets() {
         exit 1
     fi
 
-    # Cargar variables
     while IFS='=' read -r key value || [[ -n "$key" ]]; do
         [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
         export "$(echo "$key" | xargs)=$(echo "$value" | xargs)"
     done <<< "$DECRYPTED"
     
-    log_success "Secretos cargados en memoria."
+    log_success "Secretos cargados."
 }
 
-# --- CORE DEL BACKUP ---
-export_vault() {
-    log_section "EXPORTACIÓN DE BÓVEDA"
-    
-    if [[ -z "${BW_HOST:-}" ]]; then
-        log_error "BW_HOST no definido."
-        return 1
+# --- BACKUP JSON (COMPATIBILIDAD) ---
+export_json_backup() {
+    local output_file="$1/vault_export.json"
+    log_info "Generando exportación JSON portátil..."
+
+    if [[ -z "${BW_HOST:-}" ]] || [[ -z "${BW_CLIENTID:-}" ]] || [[ -z "${BW_CLIENTSECRET:-}" ]]; then
+        log_warning "Faltan credenciales (BW_HOST, BW_CLIENTID...) para exportación JSON. Saltando paso."
+        return 0
     fi
 
-    # 1. Configurar Servidor
-    log_info "Servidor: $BW_HOST"
-    if ! bw config server "$BW_HOST" > /dev/null; then
-        log_error "Fallo al configurar BW server."
-        return 1
+    # 1. Config Server
+    if ! bw config server "$BW_HOST" > /dev/null 2>&1; then
+        log_warning "Fallo al configurar servidor BW. Saltando JSON."
+        return 0
     fi
 
-    # 2. Login (API Key)
-    if [[ -z "${BW_CLIENTID:-}" ]] || [[ -z "${BW_CLIENTSECRET:-}" ]]; then
-        log_error "Credenciales BW_CLIENTID/SECRET faltantes."
-        return 1
-    fi
-    
-    log_info "Autenticando con API Key..."
+    # 2. Login
     export BW_CLIENTID="$BW_CLIENTID"
     export BW_CLIENTSECRET="$BW_CLIENTSECRET"
-    if ! bw login --apikey; then
-        log_error "Login fallido. Verifica API Keys."
-        return 1
+    if ! bw login --apikey > /dev/null 2>&1; then
+        log_warning "Login fallido en BW CLI. Verifique credenciales. Saltando JSON."
+        return 0
     fi
 
-    # 3. Unlock (Password)
-    log_info "Desencriptando bóveda..."
-    export BW_PASSWORD="$BW_PASSWORD"
+    # 3. Unlock
+    export BW_PASSWORD="${BW_PASSWORD:-}"
     BW_SESSION=$(bw unlock --passwordenv BW_PASSWORD --raw 2>/dev/null)
     
     if [[ -z "$BW_SESSION" ]]; then
-        log_error "Fallo al desbloquear bóveda. Verifica Master Password."
-        return 1
+        log_warning "Fallo al desbloquear bóveda (Password incorrecto?). Saltando JSON."
+        return 0
     fi
     export BW_SESSION
 
-    # 4. Exportar
-    log_info "Generando JSON..."
-    if ! bw export --format json --output "$BACKUP_JSON" > /dev/null 2>&1; then
-        log_error "Error en bw export."
-        return 1
+    # 4. Export
+    if bw export --format json --output "$output_file" > /dev/null 2>&1; then
+        log_success "Exportación JSON generada con éxito."
+    else
+        log_warning "Fallo al ejecutar 'bw export'."
     fi
-    
-    # Verificar integridad básica
-    if [[ ! -s "$BACKUP_JSON" ]]; then
-         log_error "Archivo exportado vacío."
-         return 1
-    fi
-
-    log_success "Bóveda exportada correctamente."
 }
 
+# --- CREACIÓN DE BACKUP HÍBRIDO ---
+create_backup() {
+    log_section "CREANDO BACKUP HÍBRIDO"
+    
+    if [[ ! -d "$DATA_DIR" ]]; then
+        log_error "Directorio de datos no encontrado: $DATA_DIR"
+        return 1
+    fi
+
+    local temp_dir=$(mktemp -d)
+    log_info "Directorio temporal: $temp_dir"
+
+    # 1. Base de datos (System Backup)
+    log_info "Respaldando base de datos..."
+    local db_path="$DATA_DIR/db.sqlite3"
+    
+    if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+        log_info "Contenedor activo. Intentando backup consistente (Hot method)..."
+        if docker exec "$CONTAINER_NAME" sqlite3 /data/db.sqlite3 ".backup '/data/db_backup.sqlite3'" 2>/dev/null; then
+            mv "$DATA_DIR/db_backup.sqlite3" "$temp_dir/db.sqlite3"
+            log_success "Hot backup realizado con éxito."
+        else
+            log_warning "Fallo sqlite3 en docker. Copiando directo."
+            cp "$db_path" "$temp_dir/db.sqlite3"
+        fi
+    else
+        log_info "Contenedor detenido. Copiando directo."
+        cp "$db_path" "$temp_dir/db.sqlite3"
+    fi
+
+    # 2. Otros archivos del Sistema
+    log_info "Copiando adjuntos y configuración..."
+    [[ -d "$DATA_DIR/attachments" ]] && cp -r "$DATA_DIR/attachments" "$temp_dir/"
+    [[ -f "$DATA_DIR/config.json" ]] && cp "$DATA_DIR/config.json" "$temp_dir/"
+    [[ -f "$DATA_DIR/rsa_key.der" ]] && cp "$DATA_DIR/rsa_key.der" "$temp_dir/"
+    [[ -f "$DATA_DIR/rsa_key.pub" ]] && cp "$DATA_DIR/rsa_key.pub" "$temp_dir/"
+
+    # 3. Exportación JSON (Portable Backup)
+    # Se añade al mismo directorio temporal para ser empaquetado junto
+    export_json_backup "$temp_dir"
+
+    # 4. Empaquetar todo
+    log_info "Comprimiendo todo en archivo único..."
+    tar -czf "$BACKUP_ARCHIVE" -C "$temp_dir" .
+    
+    rm -rf "$temp_dir"
+    
+    if [[ -s "$BACKUP_ARCHIVE" ]]; then
+        log_success "Archivo maestro creado: $(basename "$BACKUP_ARCHIVE")"
+    else
+        log_error "El archivo de backup está vacío."
+        return 1
+    fi
+}
+
+# --- CIFRADO ---
 encrypt_backup() {
     log_section "CIFRADO AGE"
     
     local AGE_KEY=$(find_age_key)
-    local PUB_KEY
+    local PUB_KEY=""
     
     if [[ -n "$AGE_KEY" ]]; then
-        # Extraer public key de la private key
         PUB_KEY=$(grep -o 'age1[a-z0-9]*' "$AGE_KEY" | head -1 || age-keygen -y "$AGE_KEY" 2>/dev/null)
-    else 
-        # Si no hay key file, intentar passphrase (no recomendado para autom)
-        log_warning "No se encontró key file, intentando modo legacy..."
-        PUB_KEY="" # Fallará si no hay interactividad adecuada, mejor error.
     fi
 
     if [[ -z "$PUB_KEY" ]]; then
-        log_error "No se pudo obtener clave pública para cifrar."
+        log_error "No se pudo obtener clave pública."
         return 1
     fi
 
-    log_info "Cifrando backup..."
-    if age -r "$PUB_KEY" -o "$BACKUP_ENCRYPTED" "$BACKUP_JSON"; then
-        log_success "Archivo cifrado creado: $(basename "$BACKUP_ENCRYPTED")"
-        rm -f "$BACKUP_JSON" # Borrado seguro inmediato
+    if age -r "$PUB_KEY" -o "$BACKUP_ENCRYPTED" "$BACKUP_ARCHIVE"; then
+        log_success "Cifrado completado."
+        rm -f "$BACKUP_ARCHIVE"
     else
-        log_error "Fallo al cifrar con AGE."
+        log_error "Fallo al cifrar."
         return 1
     fi
 }
 
+# --- SUBIDA CLOUD ---
 upload_to_cloud() {
     log_section "SINCRONIZACIÓN CLOUD"
     
@@ -282,12 +315,11 @@ upload_to_cloud() {
     log_info "Destino: $remote"
     
     if rclone copy "$BACKUP_ENCRYPTED" "$remote"; then
-        log_success "Carga finalizada correctamente."
-        
-        log_info "Aplicando retención (${retention} días)..."
+        log_success "Carga completa."
+        log_info "Limpiando antiguos (> ${retention} días)..."
         rclone delete --min-age "${retention}d" "$remote" 2>/dev/null || true
     else
-        log_error "Fallo en la conexión Rclone."
+        log_error "Fallo Rclone."
         return 1
     fi
 }
@@ -298,12 +330,10 @@ send_telegram() {
     
     if [[ -n "${TELEGRAM_TOKEN:-}" ]] && [[ -n "${TELEGRAM_CHAT_ID:-}" ]]; then
         local icon="✅"
-        local title="Backup Exitoso"
-        if [[ "$status" == "error" ]]; then
-            icon="❌"
-            title="Backup Fallido"
-        fi
+        local title="Hybrid Backup Exitoso"
+        [[ "$status" == "error" ]] && icon="❌" && title="Backup Fallido"
         
+        # Escapado básico de HTML para el mensaje
         local text="<b>$icon Vaultwarden Backup</b>%0A$title%0A$extra"
         
         curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
@@ -314,30 +344,22 @@ send_telegram() {
 }
 
 cleanup() {
-    # Eliminar datos sensibles y temporales pase lo que pase
-    rm -f "$BACKUP_JSON" "$BACKUP_ENCRYPTED" 2>/dev/null || true
-    
-    if [[ -n "${BW_DATA_DIR:-}" ]]; then
-        rm -rf "$BW_DATA_DIR" 2>/dev/null || true
-    fi
-    
-    # Intentar logout por si acaso quedó viva la sesión global (no debería con BW_DATA_DIR)
-    # bw logout > /dev/null 2>&1 || true
+    rm -f "$BACKUP_ARCHIVE" "$BACKUP_ENCRYPTED" 2>/dev/null || true
+    [[ -n "${BW_DATA_DIR:-}" ]] && rm -rf "$BW_DATA_DIR"
+    [[ -d "$DATA_DIR" ]] && rm -f "$DATA_DIR/db_backup.sqlite3" 2>/dev/null || true
 }
 
 # --- EJECUCIÓN ---
 trap cleanup EXIT
 prepare_environment
 show_banner
-
-log_to_file "START" "Iniciando proceso de backup"
-
+log_to_file "START" "Iniciando proceso de backup híbrido"
 check_dependencies
 load_secrets
 
 START_TIME=$(date +%s)
 
-if export_vault && encrypt_backup && upload_to_cloud; then
+if create_backup && encrypt_backup && upload_to_cloud; then
     END_TIME=$(date +%s)
     DURATION=$((END_TIME - START_TIME))
     FILE_SIZE=$(du -h "$BACKUP_ENCRYPTED" 2>/dev/null | cut -f1)
@@ -347,8 +369,8 @@ if export_vault && encrypt_backup && upload_to_cloud; then
     send_telegram "success" "Tamaño: $FILE_SIZE%0ATiempo: ${DURATION}s"
 else
     log_section "RESULTADO FINAL"
-    log_error "El proceso ha fallado. Revisa $LOG_FILE"
-    send_telegram "error" "Revisar logs en servidor"
+    log_error "El proceso ha fallado. Revisa log."
+    send_telegram "error" "Revisar servidor"
     exit 1
 fi
 
