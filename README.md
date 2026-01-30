@@ -20,8 +20,11 @@
 - [🚀 Instalación Rápida](#-instalación-rápida)
 - [🌐 Opciones de Despliegue](#-opciones-de-despliegue)
 - [🔐 Gestión de Secretos (AGE)](#-gestión-de-secretos-age)
-- [💾 Backups y Recuperación (Híbrido)](#-backups-y-recuperación-híbrido)
-- [📜 Referencia de Scripts](#-referencia-de-scripts)
+- [💾 Backups y Recuperación](#-backups-y-recuperación-híbrido)
+    - [Estrategia Híbrida](#qué-se-respalda)
+    - [🚨 Recuperación Total (Disaster Recovery)](#-recuperación-ante-desastre-servidor-nuevo)
+    - [� Migración Rápida a Bitwarden](#cómo-usar-el-json-portable)
+- [�📜 Referencia de Scripts](#-referencia-de-scripts)
 
 ---
 
@@ -36,7 +39,15 @@
 | ⏰ **Zero-Touch Ops** | Cronjob inteligente para backups sin intervención del usuario. |
 | 🌐 **Acceso Universal** | Guías para Cloudflare Tunnel, Tailscale y Proxy Inverso. |
 
----
+### 🛡️ Medidas de Seguridad Automáticas
+*   **Registros Cerrados por Defecto**: La variable `SIGNUPS_ALLOWED` está definida en `false` en el código. Esto evita que extraños se registren en tu servidor si encuentran tu URL.
+*   **Gestión Temporal de Registros**:
+    *   **Abrir (Para invitar)**: Pasa la variable al iniciar: `SIGNUPS_ALLOWED=true ./scripts/start.sh`.
+    *   **Cerrar (Post-Registro)**: Simplemente reinicia el servidor normalmente:
+        ```bash
+        ./scripts/start.sh
+        ```
+        *Al no pasar la variable, volverá a su valor seguro (false), bloqueando nuevos registros inmediatamente.*
 
 ## 💎 Beneficios Premium GRATIS
 
@@ -102,33 +113,81 @@ Nuestro script inteligente detectará si eres un usuario nuevo o si estás resta
 chmod +x scripts/*.sh
 ./scripts/install.sh
 ```
+> **⚠️ Importante (Restauración):** Si estás reinstalando o migrando servidor, debes restaurar tu identidad **ANTES** de ejecutar el instalador para evitar conflictos.
+> ```bash
+> mkdir -p ~/.age
+> nano ~/.age/vaultwarden.key  # Pega tu clave privada original
+> chmod 600 ~/.age/vaultwarden.key
+> ```
 
-### 3. Configurar Entorno
+### 3. Configurar Entorno Base
+Edita el archivo `.env` generado con tus secretos básicos (aún no definas la URL si usarás Tailscale):
 ```bash
-# Si eres usuario nuevo, edita el .env generado:
 nano .env
 ```
-
-| Variable | Descripción | Ejemplo |
-| :--- | :--- | :--- |
-| `BW_HOST` | URL donde estará tu Vault | `https://vault.midominio.com` |
-| `BW_PASSWORD` | Password de tu cuenta de Vault | `UnaPassMuyFuerte` (Para JSON Export) |
-| `RCLONE_REMOTE` | Destino de rclone | `gdrive:/Backups/Vault` |
-| `TELEGRAM_TOKEN` | Token de tu bot | `123456:ABC-DEF...` |
+| Variable | Descripción |
+| :--- | :--- |
+| `RCLONE_REMOTE` | Destino de rclone (Opcional por ahora) |
+| `BW_PASSWORD` | Tu futura Master Password (para el backup JSON) |
 
 ---
 
-## 🌐 Opciones de Despliegue
+## 🌐 4. Elegir Método de Despliegue
 
-### 🔷 Opción A: Cloudflare Tunnel (Recomendada)
-1. Ve a [Cloudflare Zero Trust](https://one.dash.cloudflare.com/).
-2. Networks -> Tunnels -> Create a Tunnel.
-3. Copia el **Tunnel Token** en tu `docker-compose.yml`.
-4. Configura el hostname: `vault.tudominio.com` -> `http://vaultwarden:80`.
+### 🔷 Opción A: Cloudflare Tunnel (Dominio Público)
+1. Crea el túnel en Cloudflare Zero Trust y obtén el token.
+2. En `.env`, define: `BW_HOST=https://tu-dominio.com` y `TUNNEL_TOKEN=...`.
+3. Inicia (Habilitando registros para crear tu cuenta):
+   ```bash
+   SIGNUPS_ALLOWED=true ./scripts/start.sh
+   ```
+   ```
+4. **Cerrar Registros**:
+   Una vez creada tu cuenta, reinicia normal para bloquear intrusos:
+   ```bash
+   ./scripts/start.sh
+   ```
+### 🟣 Opción B: Tailscale (Red Privada)
+1. Edita `docker-compose.yml`: Descomenta `ports: "8080:80"`.
+2. Inicia el servidor (Permitiendo registro para crear tu cuenta):
+   ```bash
+   SIGNUPS_ALLOWED=true ./scripts/start.sh
+   ```
+3. Configura Tailscale para HTTPS:
+   ```bash
+   sudo tailscale serve --bg --https=443 localhost:8080
+   sudo tailscale status # Copia la URL (https://xyz.ts.net)
+   ```
+5. **Finalizar y Cerrar Registros**:
+   Actualiza tu `.env` con la URL obtenida (`BW_HOST=https://xyz.ts.net`) y reinicia para bloquear registros:
+   ```bash
+   ./scripts/start.sh
+   ```
 
-### 🟣 Opción B: Tailscale (VPN Privada)
-1. Descomenta `ports: "8080:80"` en `docker-compose.yml`.
-2. Habilita HTTPS mágico: `tailscale serve --bg --https=443 localhost:8080`.
+---
+
+## 🚀 5. Finalización y Backups
+1. Accede a tu nueva URL y crea tu cuenta.
+2. Obtén tus API Keys (Ajustes -> Seguridad -> Claves API).
+3. Configura los backups completos:
+   ```bash
+   ./scripts/manage_secrets.sh edit
+   # Agrega BW_CLIENTID y BW_CLIENTSECRET
+   ```
+4. **Configurar Nube (Rclone)**:
+   ```bash
+   rclone config
+   # 1. 'n' (New remote) -> Ponle nombre 'gdrive'
+   # 2. 'drive' (Google Drive) -> Sigue los pasos para autorizar
+   ```
+
+5. **Definir Carpeta de Destino**:
+   Indica en qué carpeta de la nube quieres guardar los backups (El script la creará si no existe):
+   ```bash
+   ./scripts/manage_secrets.sh edit
+   # Formato: nombre_remote:Carpeta
+   # Ejemplo: RCLONE_REMOTE=gdrive:Backups/Vaultwarden
+   ```
 
 ---
 
@@ -160,33 +219,84 @@ Cada backup genera un archivo cifrado (`.tar.gz.age`) que contiene **DOS** nivel
     *   `vault_export.json`: Un archivo estándar de Bitwarden.
     *   *Uso:* Importar tus contraseñas en Bitwarden Cloud u otro gestor si decides migrar.
 
-### Cómo Restaurar (Script Guiado)
+### 🚨 Recuperación ante Desastre (Servidor Nuevo)
 
-Hemos creado un script que automatiza todo el proceso de recuperación de desastres:
+Si tu servidor original se perdió y estás configurando una **instancia nueva desde cero**, sigue estos pasos críticos en orden:
 
-```bash
-# 1. Trae tu archivo de backup (ej. desde Google Drive con rclone)
-rclone copy gdrive:Backup/Vault/vw_backup_timestamp.tar.gz.age .
+1.  **Clonar e Instalar Dependencias**:
+    ```bash
+    git clone https://github.com/TU_USUARIO/vaultwarden-proxmox.git /opt/vaultwarden
+    cd /opt/vaultwarden
+    # Instala age, docker, rclone, etc.
+    ./scripts/install.sh
+    ```
 
-# 2. Ejecuta el restaurador
-./scripts/restore.sh vw_backup_timestamp.tar.gz.age
-```
+2.  **Restaurar Identidad Criptográfica**:
+    Recupera tu llave maestra (que debiste guardar en un lugar seguro) y colócala en su sitio:
+    ```bash
+    mkdir -p ~/.age
+    nano ~/.age/vaultwarden.key  # Pega tu clave privada aquí
+    chmod 600 ~/.age/vaultwarden.key
+    ```
 
-**El script hará lo siguiente:**
-1.  Descifrará el archivo usando tu clave AGE.
-2.  Detendrá el contenedor de forma segura.
-3.  **Hará un backup de tu carpeta `data` actual** (por si algo sale mal).
-4.  Reemplazará la base de datos y adjuntos.
-5.  Reiniciará el servidor.
+3.  **Re-configurar Secretos**:
+    El backup **NO** incluye tus credenciales de despliegue (`.env.age`) por seguridad. Debes regenerarlo o restaurarlo manualmente:
+    ```bash
+    ./scripts/manage_secrets.sh edit
+    # Configura DOMAIN, TELEGRAM_TOKEN, RCLONE, etc.
+    ```
+
+4.  **Inicializar Servicios (Primer Arranque)**:
+    Es necesario que Docker cree los contenedores y volúmenes antes de restaurar los datos.
+    ```bash
+    ./scripts/start.sh
+    # Espera a que inicie y luego verifica que funciona
+    ```
+
+5.  **Descargar y Colocar el Backup**:
+    El script necesita leer el archivo `.tar.gz.age` localmente. Traélo desde tu nube y colócalo en la raíz del proyecto (`/opt/vaultwarden`).
+
+    *Opción A: Usando Rclone (Recomendado)*
+    ```bash
+    # Listar backups disponibles en la nube
+    rclone lsl gdrive:Backups/Vault/
+    
+    # Descargar el archivo deseado a la carpeta actual
+    rclone copy gdrive:Backups/Vault/vw_backup_YYYYMMDD_HHMMSS.tar.gz.age .
+    ```
+
+    *Opción B: Subida Manual (SFTP/SCP)*
+    1.  Descarga el archivo desde tu Google Drive/S3 a tu computadora.
+    2.  Súbelo al nuevo servidor usando SFTP (FileZilla) o SCP:
+        ```bash
+        scp backup.tar.gz.age usuario@tu-servidor:/opt/vaultwarden/
+        ```
+
+6.  **Ejecutar Restauración**:
+    Ejecuta el script pasando el nombre del archivo descargado:
+    ```bash
+    ./scripts/restore.sh vw_backup_YYYYMMDD_HHMMSS.tar.gz.age
+    ```
+    *El script detendrá automáticamente el servidor, reemplazará la base de datos y adjuntos, y volverá a iniciarlo.*
 
 ### ¿Cómo usar el JSON Portable?
-Si tu objetivo no es restaurar este servidor, sino **extraer tus datos** para irte a otro lado:
+Si tu objetivo no es restaurar este servidor, sino realizar una **migración rápida a Bitwarden Cloud** (⚠️ **sin** archivos adjuntos ni configuraciones):
 
-1.  Descifra el backup manualmente:
+1.  Copia tu llave privada a la carpeta actual (si no la tienes a mano):
     ```bash
-    age -d -i ~/.age/vaultwarden.key -o backup.tar.gz backup.tar.gz.age
+    cp ~/.age/vaultwarden.key .
     ```
-2.  Descomprime:
+
+2.  Descifra el backup manualmente:
+    ```bash
+    # Si tienes la key en la ruta por defecto:
+    age -d -i ~/.age/vaultwarden.key -o backup.tar.gz backup.tar.gz.age
+    
+    # O si la acabas de copiar:
+    age -d -i vaultwarden.key -o backup.tar.gz backup.tar.gz.age
+    ```
+
+3.  Descomprime:
     ```bash
     tar -xzf backup.tar.gz
     ```
