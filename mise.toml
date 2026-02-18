@@ -1,0 +1,20 @@
+# =============================================================================
+# 🔧 MISE-EN-PLACE — Entorno Portable para Vaultwarden
+# =============================================================================
+# Este archivo fija las versiones de todas las herramientas necesarias.
+# Mise las instala en ~/.local/share/mise (sin sudo, sin root).
+#
+# Uso: mise install
+# Docs: https://mise.jdx.dev
+# =============================================================================
+
+[tools]
+# Herramientas Core
+age = "latest"
+rclone = "latest"
+sqlite = "latest"   # Crítico para realizar Hot Backups seguros sin depender del OS
+direnv = "latest"
+
+# Bitwarden CLI (requiere node)
+node = "lts"
+bitwarden = "2024.1.0"  # Versión estable probada

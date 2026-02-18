@@ -9,6 +9,11 @@
 
 set -euo pipefail
 
+# --- CARGAR ENTORNO MISE (PORTABILIDAD) ---
+export MISE_DATA_DIR="$HOME/.local/share/mise"
+export PATH="$HOME/.local/bin:$PATH"
+eval "$(mise activate bash)" 2>/dev/null || true
+
 # --- CONFIGURACIÓN DE COLORES ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -80,51 +85,16 @@ log_error() {
 # --- BANNER ---
 show_banner() {
     echo -e "${YELLOW}"
-    echo "    █░█ █▄▀ █▄▄ ▄▀█ █▀▀ █▄▀ █░█ █▀█"
-    echo "    █▀█ █░█ █▄█ █▀█ █▄▄ █░█ █▄█ █▀▀"
+    echo "    █░█ █▄▀ █▄▄ ▄▀█ █▀▀ █▄▀ █░█ █▀█"
+    echo "    █▀█ █░█ █▄█ █▀█ █▄▄ █░█ █▄█ █▀▀"
     echo -e "${NC}"
     echo -e "    ${CYAN}Hybrid Backup System (System + JSON)${NC}\n"
-}
-
-# --- PREPARACIÓN DEL ENTORNO ---
-prepare_environment() {
-    export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
-
-    # Encontrar Node/NVM para Bitwarden CLI
-    local NVM_DIRS=(
-        "$HOME/.nvm/versions/node"
-        "/root/.nvm/versions/node"
-        "/home/${USER:-}/.nvm/versions/node"
-    )
-    for NVM_DIR in "${NVM_DIRS[@]}"; do
-        if [[ -d "$NVM_DIR" ]]; then
-            local NODE_PATH=$(find "$NVM_DIR" -maxdepth 1 -type d -name "v*" 2>/dev/null | sort -V | tail -1)
-            if [[ -n "$NODE_PATH" ]]; then
-                export PATH="$NODE_PATH/bin:$PATH"
-                break
-            fi
-        fi
-    done
-
-    # 3. Fallback explícito para 'bw' binary
-    if ! command -v bw &> /dev/null; then
-        for BW_PATH in /usr/local/bin/bw /usr/local/sbin/bw /usr/bin/bw /opt/bitwarden/bw; do
-            if [[ -x "$BW_PATH" ]]; then
-                export PATH="$(dirname "$BW_PATH"):$PATH"
-                break
-            fi
-        done
-    fi
-
-    # Aislamiento de sesión de Bitwarden CLI
-    BW_DATA_DIR=$(mktemp -d)
-    export BITWARDENCLI_APPDATA_DIR="$BW_DATA_DIR"
 }
 
 # --- GESTIÓN DE DEPENDENCIAS ---
 check_dependencies() {
     local missing=()
-    for cmd in age rclone curl tar docker bw; do
+    for cmd in age rclone curl tar docker bw sqlite3; do
         if ! command -v "$cmd" &> /dev/null; then
             missing+=("$cmd")
         fi
@@ -132,7 +102,7 @@ check_dependencies() {
     
     if [[ ${#missing[@]} -gt 0 ]]; then
         log_error "Dependencias faltantes: ${missing[*]}"
-        log_info "Asegúrate de tener instalado: Docker, Age, Rclone, Curl, Tar, Bitwarden CLI (bw)."
+        log_info "Ejecuta primero: ${CYAN}./scripts/install.sh${NC} para provisionar con Mise."
         exit 1
     fi
 }
@@ -193,9 +163,15 @@ export_json_backup() {
         return 0
     fi
 
+    # Aislamiento de sesión de Bitwarden CLI
+    local BW_DATA_DIR
+    BW_DATA_DIR=$(mktemp -d)
+    export BITWARDENCLI_APPDATA_DIR="$BW_DATA_DIR"
+
     # 1. Config Server
     if ! bw config server "$BW_HOST" > /dev/null 2>&1; then
         log_warning "Fallo al configurar servidor BW. Saltando JSON."
+        rm -rf "$BW_DATA_DIR"
         return 0
     fi
 
@@ -204,6 +180,7 @@ export_json_backup() {
     export BW_CLIENTSECRET="$BW_CLIENTSECRET"
     if ! bw login --apikey > /dev/null 2>&1; then
         log_warning "Login fallido en BW CLI. Verifique credenciales. Saltando JSON."
+        rm -rf "$BW_DATA_DIR"
         return 0
     fi
 
@@ -213,6 +190,7 @@ export_json_backup() {
     
     if [[ -z "$BW_SESSION" ]]; then
         log_warning "Fallo al desbloquear bóveda (Password incorrecto?). Saltando JSON."
+        rm -rf "$BW_DATA_DIR"
         return 0
     fi
     export BW_SESSION
@@ -223,6 +201,8 @@ export_json_backup() {
     else
         log_warning "Fallo al ejecutar 'bw export'."
     fi
+
+    rm -rf "$BW_DATA_DIR"
 }
 
 # --- CREACIÓN DE BACKUP HÍBRIDO ---
@@ -237,31 +217,21 @@ create_backup() {
     local temp_dir=$(mktemp -d)
     log_info "Directorio temporal: $temp_dir"
 
-    # 1. Base de datos (System Backup)
+    # 1. Base de datos (System Backup) — Prioriza sqlite3 de Mise
     log_info "Respaldando base de datos..."
     local db_path="$DATA_DIR/db.sqlite3"
     
-    # Intentar hot backup usando sqlite3 local si está instalado
     if command -v sqlite3 >/dev/null 2>&1; then
-        log_info "Usando sqlite3 local para backup consistente (Hot method)..."
+        log_info "Usando sqlite3 (provisto por Mise) para hot backup..."
         if sqlite3 "$db_path" ".backup '$temp_dir/db.sqlite3'"; then
             log_success "Hot backup realizado con éxito (sqlite3 .backup)."
         else
-            log_warning "Fallo comando sqlite3 local. Copiando archivo directo."
-            cp "$db_path" "$temp_dir/db.sqlite3"
-        fi
-    # Si no hay sqlite3 local, intentar via docker (por si acaso tiene binario)
-    elif docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-        log_info "Intentando backup via Docker..."
-        if docker exec "$CONTAINER_NAME" sqlite3 /data/db.sqlite3 ".backup '/data/db_backup.sqlite3'" 2>/dev/null; then
-            mv "$DATA_DIR/db_backup.sqlite3" "$temp_dir/db.sqlite3"
-            log_success "Hot backup realizado via Docker."
-        else
-            log_warning "No se encontró sqlite3 (ni local ni en docker). Copiando directo."
+            log_warning "Fallo comando sqlite3. Copiando archivo directo."
             cp "$db_path" "$temp_dir/db.sqlite3"
         fi
     else
-        log_info "Backup en frío (Cold copy)."
+        log_warning "sqlite3 no disponible. Usando cold copy."
+        log_info "Tip: Ejecuta ${CYAN}./scripts/install.sh${NC} para provisionar sqlite3 con Mise."
         cp "$db_path" "$temp_dir/db.sqlite3"
     fi
 
@@ -273,7 +243,6 @@ create_backup() {
     [[ -f "$DATA_DIR/rsa_key.pub" ]] && cp "$DATA_DIR/rsa_key.pub" "$temp_dir/"
 
     # 3. Exportación JSON (Portable Backup)
-    # Se añade al mismo directorio temporal para ser empaquetado junto
     export_json_backup "$temp_dir"
 
     # 4. Empaquetar todo
@@ -326,7 +295,7 @@ upload_to_cloud() {
     
     if rclone copy "$BACKUP_ENCRYPTED" "$remote"; then
         log_success "Carga completa."
-        log_info "Limpiando antiguos (> ${retention} días)..."
+        log_info "Limpiando antiguos (>${retention} días)..."
         rclone delete --min-age "${retention}d" "$remote" 2>/dev/null || true
     else
         log_error "Fallo Rclone."
@@ -343,7 +312,6 @@ send_telegram() {
         local title="Hybrid Backup Exitoso"
         [[ "$status" == "error" ]] && icon="❌" && title="Backup Fallido"
         
-        # Escapado básico de HTML para el mensaje
         local text="<b>$icon Vaultwarden Backup</b>%0A$title%0A$extra"
         
         curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" \
@@ -355,13 +323,11 @@ send_telegram() {
 
 cleanup() {
     rm -f "$BACKUP_ARCHIVE" "$BACKUP_ENCRYPTED" 2>/dev/null || true
-    [[ -n "${BW_DATA_DIR:-}" ]] && rm -rf "$BW_DATA_DIR"
     [[ -d "$DATA_DIR" ]] && rm -f "$DATA_DIR/db_backup.sqlite3" 2>/dev/null || true
 }
 
 # --- EJECUCIÓN ---
 trap cleanup EXIT
-prepare_environment
 show_banner
 log_to_file "START" "Iniciando proceso de backup híbrido"
 check_dependencies

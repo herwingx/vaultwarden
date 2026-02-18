@@ -16,7 +16,7 @@
 ## 📑 Tabla de Contenidos
 - [✨ Características](#-características)
 - [💎 Beneficios Premium](#-beneficios-premium)
-- [🛠️ Requisitos Previos (Paso a Paso)](#️-requisitos-previos-paso-a-paso)
+- [🛠️ Requisitos Previos](#️-requisitos-previos)
 - [🚀 Instalación Rápida](#-instalación-rápida)
 - [🌐 Opciones de Despliegue](#-opciones-de-despliegue)
 - [🔐 Gestión de Secretos (AGE)](#-gestión-de-secretos-age)
@@ -38,6 +38,7 @@
 | 📱 **Notificaciones** | Alertas instantáneas vía Telegram Bot API. |
 | ⏰ **Zero-Touch Ops** | Cronjob inteligente para backups sin intervención del usuario. |
 | 🌐 **Acceso Universal** | Guías para Cloudflare Tunnel, Tailscale y Proxy Inverso. |
+| 📦 **100% Portable** | Entorno gestionado con **Mise** — sin `apt`, sin `dnf`, sin `sudo`. |
 
 ### 🛡️ Medidas de Seguridad Automáticas
 *   **Registros Cerrados por Defecto**: La variable `SIGNUPS_ALLOWED` está definida en `false` en el código. Esto evita que extraños se registren en tu servidor si encuentran tu URL.
@@ -61,13 +62,13 @@ Vaultwarden habilita **todas las funciones premium de Bitwarden** sin costo algu
 
 ---
 
-## 🛠️ Requisitos Previos (Paso a Paso)
+## 🛠️ Requisitos Previos
 
-Antes de clonar, asegúrate de tener las herramientas base instaladas. Elige tu distribución:
+Solo necesitas **una cosa** instalada en tu sistema:
 
-### 1. Docker y Docker Compose
+### Docker y Docker Compose
 ```bash
-# Ubuntu / Debian
+# Cualquier distribución Linux (Alpine, Ubuntu, Fedora, Arch, etc.)
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 
@@ -75,26 +76,9 @@ sudo sh get-docker.sh
 docker compose version
 ```
 
-### 2. Herramientas de Cifrado y Backup
-```bash
-# Ubuntu / Debian
-sudo apt update && sudo apt install -y age rclone curl git tar sqlite3
-
-# Fedora / RHEL
-sudo dnf install -y age rclone curl git tar sqlite3
-```
-*Tip: `sqlite3` es recomendado para realizar backups en caliente sin detener el servidor.*
-
-### 3. Bitwarden CLI (Opcional pero Recomendado)
-Si deseas que tus backups incluyan un JSON portable compatible con Bitwarden Cloud:
-```bash
-# Instalar BW CLI (v2024.1.0 recomendada)
-npm install -g @bitwarden/cli@2024.1.0
-
-# Verificar
-bw --version
-```
-*Si tienes problemas con `userDecryptionOptions is missing`, usa esta versión específica.*
+> **¿Y las demás herramientas?** (`age`, `rclone`, `sqlite3`, `bw`, `node`...)
+>
+> **No necesitas instalar nada más.** El script `install.sh` usa **[Mise](https://mise.jdx.dev)** para descargar y gestionar todas las herramientas automáticamente en modo usuario (`~/.local/share/mise`). Sin `sudo`, sin `apt`, sin `dnf`. 100% portable.
 
 ---
 
@@ -224,12 +208,11 @@ Cada backup genera un archivo cifrado (`.tar.gz.age`) que contiene **DOS** nivel
 
 Si tu servidor original se perdió y estás configurando una **instancia nueva desde cero**, sigue estos pasos críticos en orden:
 
-1.  **Clonar e Instalar Dependencias**:
+1.  **Clonar e Instalar (Mise se encarga de todo)**:
     ```bash
     git clone https://github.com/TU_USUARIO/vaultwarden-proxmox.git /opt/vaultwarden
     cd /opt/vaultwarden
-    # Instala age, docker, rclone, etc.
-    ./scripts/install.sh
+    ./scripts/install.sh  # Instala Mise + todas las herramientas automáticamente
     ```
 
 2.  **Restaurar Identidad Criptográfica**:

@@ -8,6 +8,11 @@
 
 set -euo pipefail
 
+# --- CARGAR ENTORNO MISE (PORTABILIDAD) ---
+export MISE_DATA_DIR="$HOME/.local/share/mise"
+export PATH="$HOME/.local/bin:$PATH"
+eval "$(mise activate bash)" 2>/dev/null || true
+
 # --- CONFIGURACIÓN DE COLORES ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'

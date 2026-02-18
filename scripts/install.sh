@@ -1,9 +1,11 @@
 #!/bin/bash
 
 # =============================================================================
-# 🔐 VAULTWARDEN INSTALLER
+# 🔐 VAULTWARDEN INSTALLER (PORTABLE)
 # =============================================================================
 # Diseñado para una experiencia de usuario premium y configuración profesional.
+# Usa Mise (mise-en-place) para gestionar herramientas de forma portable.
+# Compatible con Alpine, Fedora, Ubuntu y cualquier distribución Linux.
 # =============================================================================
 
 set -euo pipefail
@@ -22,8 +24,8 @@ NC='\033[0m'
 show_banner() {
     clear
     echo -e "${CYAN}"
-    echo "    █░█ ▄▀█ █░█ █░░ ▀█▀ █░█ ▄▀█ █▀█ █▀▄ █▀▀ █▄░█"
-    echo "    ▀▄▀ █▀█ █▄█ █▄▄ ░█░ ▀▄▀ █▀█ █▀▄ █▄▀ ██▄ █░▀█"
+    echo "    █░█ ▄▀█ █░█ █░░ ▀█▀ █░█ ▄▀█ █▀█ █▀▄ █▀▀ █▄░█"
+    echo "    ▀▄▀ █▀█ █▄█ █▄▄ ░█░ ▀▄▀ █▀█ █▀▄ █▄▀ ██▄ █░▀█"
     echo -e "${NC}"
     echo -e "${BOLD}      BEYOND SECURITY — SELF-HOSTED STACK${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -61,36 +63,96 @@ find_age_key() {
     return 1
 }
 
-# --- VERIFICAR DEPENDENCIAS ---
-check_dependencies() {
-    log_section "VERIFICANDO INFRAESTRUCTURA"
-    
-    local missing=()
-    local deps=("age" "rclone" "curl" "docker" "bw" "sqlite3")
-    
-    for cmd in "${deps[@]}"; do
-        if ! command -v "$cmd" &> /dev/null; then
-            missing+=("$cmd")
-            log_error "Falta: $cmd"
+# --- INSTALAR Y CONFIGURAR MISE ---
+setup_mise() {
+    log_section "ENTORNO PORTABLE (MISE)"
+
+    # 1. Verificar si mise ya está disponible
+    if command -v mise &> /dev/null; then
+        log_success "Mise ya está instalado: $(mise --version)"
+    else
+        log_info "Mise no detectado. Instalando en modo usuario..."
+        if command -v curl &> /dev/null; then
+            curl -fsSL https://mise.run | sh
+        elif command -v wget &> /dev/null; then
+            wget -qO- https://mise.run | sh
         else
-            log_success "$cmd instalado"
+            log_error "Se necesita curl o wget para instalar Mise."
+            exit 1
+        fi
+
+        # Asegurar que mise está en el PATH para esta sesión
+        export PATH="$HOME/.local/bin:$PATH"
+
+        if command -v mise &> /dev/null; then
+            log_success "Mise instalado correctamente: $(mise --version)"
+        else
+            log_error "Fallo al instalar Mise. Verifica tu conexión."
+            exit 1
+        fi
+    fi
+
+    # 2. Instalar herramientas desde mise.toml
+    log_info "Provisionando herramientas definidas en mise.toml..."
+    cd "$PROJECT_DIR"
+
+    if mise install --yes; then
+        log_success "Todas las herramientas instaladas correctamente."
+    else
+        log_error "Fallo al instalar herramientas con Mise."
+        exit 1
+    fi
+
+    # 3. Activar entorno para esta sesión
+    eval "$(mise activate bash)"
+
+    # 4. Verificar herramientas críticas
+    echo ""
+    log_info "Verificando herramientas provisionadas:"
+    local tools=("age" "rclone" "sqlite3" "node" "bw")
+    local all_ok=true
+    for cmd in "${tools[@]}"; do
+        if command -v "$cmd" &> /dev/null; then
+            log_success "$cmd disponible"
+        else
+            log_warning "$cmd no encontrado (podría no ser necesario)"
+            all_ok=false
         fi
     done
-    
-    if [[ ${#missing[@]} -gt 0 ]]; then
-        echo ""
-        log_warning "Para instalar las dependencias faltantes:"
-        echo -e "  ${CYAN}Debian/Ubuntu:${NC} sudo apt install age rclone curl git && npm install -g @bitwarden/cli@2024.1.0"
-        echo -e "  ${CYAN}Fedora:${NC} sudo dnf install age rclone curl git && npm install -g @bitwarden/cli@2024.1.0"
-        return 1
+
+    echo ""
+    if $all_ok; then
+        log_success "Entorno portable listo. Todas las herramientas operativas."
+    else
+        log_warning "Algunas herramientas opcionales no están disponibles."
+        log_info "El sistema puede funcionar sin ellas dependiendo de tu configuración."
+    fi
+}
+
+# --- VERIFICAR DOCKER (única dependencia del sistema) ---
+check_docker() {
+    log_section "VERIFICANDO DOCKER"
+
+    if command -v docker &> /dev/null; then
+        log_success "Docker instalado: $(docker --version | head -1)"
+    else
+        log_error "Docker no está instalado."
+        log_info "Instala Docker: ${CYAN}curl -fsSL https://get.docker.com | sh${NC}"
+        exit 1
+    fi
+
+    if docker compose version &> /dev/null; then
+        log_success "Docker Compose disponible."
+    else
+        log_warning "Docker Compose no encontrado. Se necesita para levantar el stack."
     fi
 }
 
 # --- CONFIGURAR ENTORNO (.env) ---
 setup_env() {
     log_section "CONFIGURACIÓN DE ENTORNO"
-    
-    # 1. Verificar si existe .env plano (Prioridad baja: se asume que el usuario sabe lo que hace)
+
+    # 1. Verificar si existe .env plano
     if [[ -f "$PROJECT_DIR/.env" ]]; then
         log_success "Archivo de configuración (.env) detectado."
         return 0
@@ -115,11 +177,11 @@ setup_env() {
     else
         log_warning "No se encontró ningún archivo de configuración."
     fi
-    
+
     # 3. Crear nuevo .env si no pasamos las validaciones anteriores
     read -p "    ¿Deseas inicializar una nueva configuración desde la plantilla? [S/n]: " -r response
     response=${response:-S}
-    
+
     if [[ "$response" =~ ^[Ss]$ ]]; then
         cp "$PROJECT_DIR/.env.example" "$PROJECT_DIR/.env"
         log_success "Archivo .env creado exitosamente."
@@ -131,7 +193,7 @@ setup_env() {
 setup_cron() {
     local schedule="${1:-$CRON_SCHEDULE}"
     log_section "PROGRAMACIÓN DE BACKUPS"
-    
+
     # Determinar ruta de log escribible
     local log_path="/var/log/vaultwarden_backup.log"
     if [[ ! -w "/var/log" ]]; then
@@ -146,10 +208,10 @@ setup_cron() {
 
     local CRON_CMD="$BACKUP_SCRIPT >> $log_path 2>&1"
     local CRON_ENTRY="$schedule $CRON_CMD"
-    
+
     local CURRENT_CRON=""
     CURRENT_CRON=$(crontab -l 2>/dev/null | grep -v "$BACKUP_SCRIPT" || true)
-    
+
     if crontab -l 2>/dev/null | grep -q "$BACKUP_SCRIPT"; then
         log_warning "Ya existe un backup programado."
         read -p "    ¿Deseas actualizar el horario? [s/N]: " -r response
@@ -158,30 +220,30 @@ setup_cron() {
             return 0
         fi
     fi
-    
+
     if [[ -n "$CURRENT_CRON" ]]; then
         echo -e "${CURRENT_CRON}\n${CRON_ENTRY}" | crontab -
     else
         echo "$CRON_ENTRY" | crontab -
     fi
-    
+
     log_success "Backup programado correctamente: ${BOLD}$schedule${NC}"
 }
 
 # --- MOSTRAR ESTADO ---
 show_status() {
     log_section "SISTEMA DE SALUD"
-    
+
     # Dependencias
-    echo -e "  ${BOLD}Core Services:${NC}"
-    for cmd in age rclone curl docker bw; do
+    echo -e "  ${BOLD}Core Services (Mise):${NC}"
+    for cmd in age rclone sqlite3 node bw docker; do
         if command -v "$cmd" &> /dev/null; then
             echo -e "    ${GREEN}●${NC} $cmd"
         else
             echo -e "    ${RED}○${NC} $cmd"
         fi
     done
-    
+
     echo ""
     echo -e "  ${BOLD}Seguridad (AGE):${NC}"
     local AGE_KEY
@@ -191,7 +253,7 @@ show_status() {
     else
         log_error "Clave privada no encontrada"
     fi
-    
+
     echo ""
     echo -e "  ${BOLD}Configuración:${NC}"
     for file in .env.age .env docker-compose.yml; do
@@ -201,16 +263,17 @@ show_status() {
             echo -e "    ${YELLOW}◌${NC} $file (vacío)"
         fi
     done
-    
+
     echo ""
 }
 
 # --- INSTALACIÓN COMPLETA ---
 full_install() {
     show_banner
-    
-    check_dependencies || true
-    
+
+    check_docker
+    setup_mise
+
     log_section "CONFIGURACIÓN DE SEGURIDAD"
     if ! find_age_key > /dev/null; then
         log_warning "No se detectó una clave AGE."
@@ -228,13 +291,16 @@ full_install() {
     else
         log_success "Clave de seguridad detectada correctamente."
     fi
-    
+
     setup_env
     setup_cron "$CRON_SCHEDULE"
-    
+
     show_status
-    
+
     log_section "FINALIZACIÓN"
+    echo -e "  ${GREEN}${BOLD}✔ Entorno portable configurado con Mise.${NC}"
+    echo -e "  ${BOLD}Sin dependencias del sistema operativo. Sin sudo.${NC}"
+    echo ""
     echo -e "  ${BOLD}Pasos Finales:${NC}"
     echo -e "  1. Configura tus credenciales en el archivo ${CYAN}.env${NC}"
     echo -e "  2. Cifra tus secretos: ${CYAN}./scripts/manage_secrets.sh encrypt${NC}"
@@ -246,13 +312,13 @@ full_install() {
 
 # --- MAIN ---
 case "${1:-}" in
-    --deps)   check_dependencies ;;
+    --deps)   check_docker && setup_mise ;;
     --cron)   setup_cron "${2:-$CRON_SCHEDULE}" ;;
     --status) show_status ;;
     --help|-h)
         echo "Uso: $0 [opción]"
-        echo "  (sin args)   Instalación guiada"
-        echo "  --deps       Verificar herramientas base"
+        echo "  (sin args)   Instalación guiada (Mise + configuración)"
+        echo "  --deps       Instalar/verificar herramientas (Docker + Mise)"
         echo "  --cron       Configurar horario de backup"
         echo "  --status     Diagnóstico de salud"
         ;;
