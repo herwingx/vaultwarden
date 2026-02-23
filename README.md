@@ -294,7 +294,7 @@ Si tu objetivo no es restaurar este servidor, sino realizar una **migración rá
 | Script | Acción | UX |
 | :--- | :--- | :--- |
 | `install.sh` | Configuración inicial | Asistente interactivo. |
-| `start.sh` | Lanzador seguro | Levanta Docker y borra rastro de secretos. |
+| `start.sh` | Lanzador seguro | Activa entorno Mise, levanta Docker y borra rastro de secretos. |
 | `backup.sh` | Backup Híbrido | Genera SQLite + JSON, cifra y sube a nube. |
 | `restore.sh` | Restauración | Recuperación guiada y segura desde backup. |
 | `manage_secrets.sh`| Toolset de AGE | Manejo completo de llaves y cifrado. |
