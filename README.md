@@ -300,8 +300,8 @@ El proyecto usa la imagen `vaultwarden/server:latest`. **No se actualiza sola**:
   ```
   Descarga las últimas imágenes (Vaultwarden y Cloudflared), recrea los contenedores y aplica los cambios.
 
-- **Programar actualizaciones con cron (recomendado):**  
-  Durante la instalación se puede programar una actualización automática (por defecto: domingos a las 4:00). Si ya instalaste, añade la tarea con:
+- **Cron de actualización:**  
+  En la instalación se configuran automáticamente los crons de backup y de actualización (domingos 4:00). Para cambiar el horario o añadir la tarea si ya instalaste:
   ```bash
   ./scripts/install.sh --cron-update
   # O con horario custom, ej. sábados 3:00:

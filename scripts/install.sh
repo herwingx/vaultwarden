@@ -335,15 +335,7 @@ full_install() {
 
     setup_env
     setup_cron "$CRON_SCHEDULE"
-
-    echo ""
-    read -p "    ¿Programar actualización semanal de Vaultwarden (domingo 4:00)? [S/n]: " -r response
-    response=${response:-S}
-    if [[ "$response" =~ ^[Ss]$ ]]; then
-        setup_cron_update "$UPDATE_CRON_SCHEDULE"
-    else
-        log_info "Puedes programarla después con: ${CYAN}./scripts/install.sh --cron-update${NC}"
-    fi
+    setup_cron_update "$UPDATE_CRON_SCHEDULE"
 
     show_status
 
