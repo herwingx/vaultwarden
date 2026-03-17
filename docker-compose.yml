@@ -1,3 +1,5 @@
+# Para usar siempre la última versión: deja :latest y ejecuta ./scripts/update.sh
+# Para fijar versión (recomendado en producción): usa ej. vaultwarden/server:1.35.4
 services:
   vaultwarden:
     image: vaultwarden/server:latest

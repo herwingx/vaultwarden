@@ -24,7 +24,8 @@
     - [Estrategia Híbrida](#qué-se-respalda)
     - [🚨 Recuperación Total (Disaster Recovery)](#-recuperación-ante-desastre-servidor-nuevo)
     - [� Migración Rápida a Bitwarden](#cómo-usar-el-json-portable)
-- [�📜 Referencia de Scripts](#-referencia-de-scripts)
+- [�🔄 Actualizar Vaultwarden](#-actualizar-vaultwarden)
+- [📜 Referencia de Scripts](#-referencia-de-scripts)
 
 ---
 
@@ -289,12 +290,29 @@ Si tu objetivo no es restaurar este servidor, sino realizar una **migración rá
 
 ---
 
+## 🔄 Actualizar Vaultwarden
+
+El proyecto usa la imagen `vaultwarden/server:latest`. **No se actualiza sola**: el contenedor sigue con la imagen que se descargó la primera vez hasta que ejecutes una actualización.
+
+- **Actualizar a la versión más reciente:**  
+  ```bash
+  ./scripts/update.sh
+  ```
+  Descarga las últimas imágenes (Vaultwarden y Cloudflared), recrea los contenedores y aplica los cambios.
+
+- **Fijar una versión concreta (recomendado en producción):**  
+  Edita `docker-compose.yml` y cambia `image: vaultwarden/server:latest` por una etiqueta fija, por ejemplo `vaultwarden/server:1.35.4`. Así evitas cambios inesperados; cuando quieras actualizar, cambias la etiqueta y ejecutas `./scripts/update.sh`.  
+  Versiones publicadas: [dani-garcia/vaultwarden releases](https://github.com/dani-garcia/vaultwarden/releases).
+
+---
+
 ## 📜 Referencia de Scripts
 
 | Script | Acción | UX |
 | :--- | :--- | :--- |
 | `install.sh` | Configuración inicial | Asistente interactivo. |
 | `start.sh` | Lanzador seguro | Activa entorno Mise, levanta Docker y borra rastro de secretos. |
+| `update.sh` | Actualizar imágenes | Pull de vaultwarden/server y cloudflared, reinicio de contenedores. |
 | `backup.sh` | Backup Híbrido | Genera SQLite + JSON, cifra y sube a nube. |
 | `restore.sh` | Restauración | Recuperación guiada y segura desde backup. |
 | `manage_secrets.sh`| Toolset de AGE | Manejo completo de llaves y cifrado. |
