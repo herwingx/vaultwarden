@@ -3,10 +3,9 @@
 # =============================================================================
 
 # --- SECRETOS ---
-# .env NO va a Git (tiene datos en plano)
+# No versionar credenciales; cada despliegue usa su propio .env / .env.age
 .env
-# .env.age SÍ va a Git (está cifrado)
-!.env.age
+.env.age
 !secrets.env.example
 
 # --- CLAVES AGE ---

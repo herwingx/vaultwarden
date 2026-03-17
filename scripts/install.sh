@@ -95,10 +95,12 @@ setup_mise() {
         fi
     fi
 
-    # 2. Instalar herramientas desde mise.toml
-    log_info "Provisionando herramientas definidas en mise.toml..."
+    # 2. Confiar en mise.toml del proyecto (necesario en clones nuevos)
     cd "$PROJECT_DIR"
+    mise trust 2>/dev/null || true
 
+    # 3. Instalar herramientas desde mise.toml
+    log_info "Provisionando herramientas definidas en mise.toml..."
     if mise install --yes; then
         log_success "Todas las herramientas instaladas correctamente."
     else
@@ -106,10 +108,10 @@ setup_mise() {
         exit 1
     fi
 
-    # 3. Activar entorno para esta sesión
+    # 4. Activar entorno para esta sesión
     eval "$(mise activate bash)"
 
-    # 4. Verificar herramientas críticas
+    # 5. Verificar herramientas críticas
     echo ""
     log_info "Verificando herramientas provisionadas:"
     local tools=("age" "rclone" "sqlite3" "node" "bw")
