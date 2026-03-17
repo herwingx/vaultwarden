@@ -37,7 +37,7 @@
 | 🔐 **Cifrado Militar** | Secretos y backups protegidos con **AGE** (Identity Files). |
 | ☁️ **Multi-Cloud Backup** | Integración con **rclone** (Drive, S3, Dropbox, etc.). |
 | 📱 **Notificaciones** | Alertas instantáneas vía Telegram Bot API. |
-| ⏰ **Zero-Touch Ops** | Cronjob inteligente para backups sin intervención del usuario. |
+| ⏰ **Zero-Touch Ops** | Cron para backups y actualizaciones de Vaultwarden sin intervención. |
 | 🌐 **Acceso Universal** | Guías para Cloudflare Tunnel, Tailscale y Proxy Inverso. |
 | 📦 **100% Portable** | Entorno gestionado con **Mise** — sin `apt`, sin `dnf`, sin `sudo`. |
 
@@ -300,6 +300,15 @@ El proyecto usa la imagen `vaultwarden/server:latest`. **No se actualiza sola**:
   ```
   Descarga las últimas imágenes (Vaultwarden y Cloudflared), recrea los contenedores y aplica los cambios.
 
+- **Programar actualizaciones con cron (recomendado):**  
+  Durante la instalación se puede programar una actualización automática (por defecto: domingos a las 4:00). Si ya instalaste, añade la tarea con:
+  ```bash
+  ./scripts/install.sh --cron-update
+  # O con horario custom, ej. sábados 3:00:
+  ./scripts/install.sh --cron-update "0 3 * * 6"
+  ```
+  Los logs se guardan en `update.log` (o `/var/log/vaultwarden_update.log` si tienes permisos).
+
 - **Fijar una versión concreta (recomendado en producción):**  
   Edita `docker-compose.yml` y cambia `image: vaultwarden/server:latest` por una etiqueta fija, por ejemplo `vaultwarden/server:1.35.4`. Así evitas cambios inesperados; cuando quieras actualizar, cambias la etiqueta y ejecutas `./scripts/update.sh`.  
   Versiones publicadas: [dani-garcia/vaultwarden releases](https://github.com/dani-garcia/vaultwarden/releases).
@@ -310,9 +319,9 @@ El proyecto usa la imagen `vaultwarden/server:latest`. **No se actualiza sola**:
 
 | Script | Acción | UX |
 | :--- | :--- | :--- |
-| `install.sh` | Configuración inicial | Asistente interactivo. |
+| `install.sh` | Configuración inicial | Asistente interactivo. Opciones: `--cron`, `--cron-update`, `--status`. |
 | `start.sh` | Lanzador seguro | Activa entorno Mise, levanta Docker y borra rastro de secretos. |
-| `update.sh` | Actualizar imágenes | Pull de vaultwarden/server y cloudflared, reinicio de contenedores. |
+| `update.sh` | Actualizar imágenes | Pull de vaultwarden/server y cloudflared, reinicio de contenedores. Programable con `install.sh --cron-update`. |
 | `backup.sh` | Backup Híbrido | Genera SQLite + JSON, cifra y sube a nube. |
 | `restore.sh` | Restauración | Recuperación guiada y segura desde backup. |
 | `manage_secrets.sh`| Toolset de AGE | Manejo completo de llaves y cifrado. |

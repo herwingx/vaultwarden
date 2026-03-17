@@ -43,6 +43,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BACKUP_SCRIPT="$SCRIPT_DIR/backup.sh"
 CRON_SCHEDULE="${2:-0 3 * * *}"
+UPDATE_SCRIPT="$SCRIPT_DIR/update.sh"
+# Actualización semanal de Vaultwarden (domingo 4:00)
+UPDATE_CRON_SCHEDULE="0 4 * * 0"
 
 # Ubicaciones de clave AGE
 AGE_KEY_LOCATIONS=(
@@ -230,6 +233,44 @@ setup_cron() {
     log_success "Backup programado correctamente: ${BOLD}$schedule${NC}"
 }
 
+# --- CONFIGURAR CRON DE ACTUALIZACIÓN (VAULTWARDEN) ---
+setup_cron_update() {
+    local schedule="${1:-$UPDATE_CRON_SCHEDULE}"
+    log_section "PROGRAMACIÓN DE ACTUALIZACIÓN DE VAULTWARDEN"
+
+    local log_path="$PROJECT_DIR/update.log"
+    if [[ -w "/var/log" ]]; then
+        log_path="/var/log/vaultwarden_update.log"
+    fi
+
+    if [[ "$schedule" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]]; then
+        schedule="$schedule * * *"
+    fi
+
+    local CRON_CMD="$UPDATE_SCRIPT >> $log_path 2>&1"
+    local CRON_ENTRY="$schedule $CRON_CMD"
+
+    local CURRENT_CRON
+    CURRENT_CRON=$(crontab -l 2>/dev/null | grep -v "$UPDATE_SCRIPT" || true)
+
+    if crontab -l 2>/dev/null | grep -q "$UPDATE_SCRIPT"; then
+        log_warning "Ya existe una actualización programada."
+        read -p "    ¿Actualizar el horario? [s/N]: " -r response
+        if [[ ! "$response" =~ ^[Ss]$ ]]; then
+            log_info "Manteniendo cron actual."
+            return 0
+        fi
+    fi
+
+    if [[ -n "$CURRENT_CRON" ]]; then
+        echo -e "${CURRENT_CRON}\n${CRON_ENTRY}" | crontab -
+    else
+        echo "$CRON_ENTRY" | crontab -
+    fi
+
+    log_success "Actualización de Vaultwarden programada: ${BOLD}$schedule${NC} (ver: $log_path)"
+}
+
 # --- MOSTRAR ESTADO ---
 show_status() {
     log_section "SISTEMA DE SALUD"
@@ -295,6 +336,15 @@ full_install() {
     setup_env
     setup_cron "$CRON_SCHEDULE"
 
+    echo ""
+    read -p "    ¿Programar actualización semanal de Vaultwarden (domingo 4:00)? [S/n]: " -r response
+    response=${response:-S}
+    if [[ "$response" =~ ^[Ss]$ ]]; then
+        setup_cron_update "$UPDATE_CRON_SCHEDULE"
+    else
+        log_info "Puedes programarla después con: ${CYAN}./scripts/install.sh --cron-update${NC}"
+    fi
+
     show_status
 
     log_section "FINALIZACIÓN"
@@ -312,15 +362,17 @@ full_install() {
 
 # --- MAIN ---
 case "${1:-}" in
-    --deps)   check_docker && setup_mise ;;
-    --cron)   setup_cron "${2:-$CRON_SCHEDULE}" ;;
-    --status) show_status ;;
+    --deps)        check_docker && setup_mise ;;
+    --cron)        setup_cron "${2:-$CRON_SCHEDULE}" ;;
+    --cron-update) setup_cron_update "${2:-$UPDATE_CRON_SCHEDULE}" ;;
+    --status)      show_status ;;
     --help|-h)
-        echo "Uso: $0 [opción]"
-        echo "  (sin args)   Instalación guiada (Mise + configuración)"
-        echo "  --deps       Instalar/verificar herramientas (Docker + Mise)"
-        echo "  --cron       Configurar horario de backup"
-        echo "  --status     Diagnóstico de salud"
+        echo "Uso: $0 [opción] [horario]"
+        echo "  (sin args)       Instalación guiada (Mise + configuración)"
+        echo "  --deps           Instalar/verificar herramientas (Docker + Mise)"
+        echo "  --cron [horario] Configurar horario de backup (default: 0 3 * * *)"
+        echo "  --cron-update [horario] Programar actualización de Vaultwarden (default: 0 4 * * 0 = domingo 4:00)"
+        echo "  --status         Diagnóstico de salud"
         ;;
     "")       full_install ;;
     *)        echo "Opción inválida. Usa --help" ; exit 1 ;;
