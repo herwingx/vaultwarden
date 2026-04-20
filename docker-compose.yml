@@ -6,7 +6,7 @@ services:
     container_name: vaultwarden
     restart: always
     environment:
-      # Dominio público (a través de Cloudflare Tunnel)
+      # Dominio público configurado en tu proxy/túnel externo
       - DOMAIN=${DOMAIN}
       # Control de registros (ver .env)
       - SIGNUPS_ALLOWED=${SIGNUPS_ALLOWED:-false}
@@ -19,21 +19,6 @@ services:
     volumes:
       # Persistencia de datos (bóveda, configuración, íconos, etc.)
       - ./data:/data
-    # No exponemos puertos al host por defecto (solo via tunnel)
-    # Si NO usas Cloudflare Tunnel (ej. Tailscale o IP Local), descomenta esto:
-    # ports:
-    #   - "8080:80"
-    expose:
-      - "80"
-
-  # ☁️ CLOUDFLARE TUNNEL (Opcional)
-  # Si usas Tailscale/IP Local, puedes eliminar o comentar este servicio
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    restart: always
-    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
-    environment:
-      - TZ=${TZ:-America/Mexico_City}
-    depends_on:
-      - vaultwarden
+    # Publicamos puerto local para Cloudflare nativo, Tailscale o LAN
+    ports:
+      - "8080:80"

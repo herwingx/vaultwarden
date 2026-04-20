@@ -3,7 +3,7 @@
 # =============================================================================
 # 🔄 VAULTWARDEN - ACTUALIZAR A LA ÚLTIMA VERSIÓN
 # =============================================================================
-# Descarga las imágenes Docker más recientes (vaultwarden/server, cloudflared)
+# Descarga las imágenes Docker más recientes y recrea los contenedores.
 # y reinicia los contenedores. Usa el mismo flujo seguro que start.sh.
 # =============================================================================
 
@@ -98,7 +98,7 @@ decrypt_to_env
 
 cd "$PROJECT_DIR"
 
-log_info "Descargando últimas imágenes (vaultwarden/server, cloudflared)..."
+log_info "Descargando últimas imágenes..."
 docker compose pull
 
 log_info "Recreando contenedores con las nuevas imágenes..."

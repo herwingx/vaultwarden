@@ -38,7 +38,7 @@
 | ☁️ **Multi-Cloud Backup** | Integración con **rclone** (Drive, S3, Dropbox, etc.). |
 | 📱 **Notificaciones** | Alertas instantáneas vía Telegram Bot API. |
 | ⏰ **Zero-Touch Ops** | Cron para backups y actualizaciones de Vaultwarden sin intervención. |
-| 🌐 **Acceso Universal** | Guías para Cloudflare Tunnel, Tailscale y Proxy Inverso. |
+| 🌐 **Acceso Universal** | Guías para Cloudflare nativo, Tailscale y Proxy Inverso. |
 | 📦 **100% Portable** | Entorno gestionado con **Mise** — sin `apt`, sin `dnf`, sin `sudo`. |
 
 ### 🛡️ Medidas de Seguridad Automáticas
@@ -120,21 +120,21 @@ nano .env
 
 ## 🌐 4. Elegir Método de Despliegue
 
-### 🔷 Opción A: Cloudflare Tunnel (Dominio Público)
-1. Crea el túnel en Cloudflare Zero Trust y obtén el token.
-2. En `.env`, define: `BW_HOST=https://tu-dominio.com` y `TUNNEL_TOKEN=...`.
-3. Inicia (Habilitando registros para crear tu cuenta):
+### 🔷 Opción A: Cloudflare Nativo (Dominio Público)
+1. Deja Vaultwarden escuchando en `localhost:8080` (ya viene en `docker-compose.yml`).
+2. En Cloudflare Zero Trust, crea tu Tunnel/App para apuntar al origen `http://localhost:8080`.
+3. En `.env`, define: `BW_HOST=https://tu-dominio.com`.
+4. Inicia (Habilitando registros para crear tu cuenta):
    ```bash
    SIGNUPS_ALLOWED=true ./scripts/start.sh
    ```
-   ```
-4. **Cerrar Registros**:
+5. **Cerrar Registros**:
    Una vez creada tu cuenta, reinicia normal para bloquear intrusos:
    ```bash
    ./scripts/start.sh
    ```
 ### 🟣 Opción B: Tailscale (Red Privada)
-1. Edita `docker-compose.yml`: Descomenta `ports: "8080:80"`.
+1. El servicio ya publica `8080:80` por defecto en `docker-compose.yml`.
 2. Inicia el servidor (Permitiendo registro para crear tu cuenta):
    ```bash
    SIGNUPS_ALLOWED=true ./scripts/start.sh
@@ -298,7 +298,7 @@ El proyecto usa la imagen `vaultwarden/server:latest`. **No se actualiza sola**:
   ```bash
   ./scripts/update.sh
   ```
-  Descarga las últimas imágenes (Vaultwarden y Cloudflared), recrea los contenedores y aplica los cambios.
+    Descarga las últimas imágenes y recrea los contenedores para aplicar los cambios.
 
 - **Cron de actualización:**  
   En la instalación se configuran automáticamente los crons de backup y de actualización (domingos 4:00). Para cambiar el horario o añadir la tarea si ya instalaste:
@@ -321,7 +321,7 @@ El proyecto usa la imagen `vaultwarden/server:latest`. **No se actualiza sola**:
 | :--- | :--- | :--- |
 | `install.sh` | Configuración inicial | Asistente interactivo. Opciones: `--cron`, `--cron-update`, `--status`. |
 | `start.sh` | Lanzador seguro | Activa entorno Mise, levanta Docker y borra rastro de secretos. |
-| `update.sh` | Actualizar imágenes | Pull de vaultwarden/server y cloudflared, reinicio de contenedores. Programable con `install.sh --cron-update`. |
+| `update.sh` | Actualizar imágenes | Pull de imágenes definidas en compose y reinicio de contenedores. Programable con `install.sh --cron-update`. |
 | `backup.sh` | Backup Híbrido | Genera SQLite + JSON, cifra y sube a nube. |
 | `restore.sh` | Restauración | Recuperación guiada y segura desde backup. |
 | `manage_secrets.sh`| Toolset de AGE | Manejo completo de llaves y cifrado. |
