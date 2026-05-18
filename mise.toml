@@ -12,7 +12,6 @@
 # Herramientas Core
 age = "latest"
 rclone = "latest"
-sqlite = "latest"   # Crítico para realizar Hot Backups seguros sin depender del OS
 direnv = "latest"
 
 # Bitwarden CLI (requiere node)
