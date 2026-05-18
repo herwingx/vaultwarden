@@ -1,24 +1,15 @@
-# Para usar siempre la última versión: deja :latest y ejecuta ./scripts/update.sh
-# Para fijar versión (recomendado en producción): usa ej. vaultwarden/server:1.35.4
 services:
   vaultwarden:
     image: vaultwarden/server:latest
     container_name: vaultwarden
     restart: always
     environment:
-      # Dominio público configurado en tu proxy/túnel externo
       - DOMAIN=${DOMAIN}
-      # Control de registros (ver .env)
       - SIGNUPS_ALLOWED=${SIGNUPS_ALLOWED:-false}
-      # Puerto interno del servidor
       - ROCKET_PORT=80
-      # Habilitar WebSocket para notificaciones en tiempo real
       - WEBSOCKET_ENABLED=true
-      # Zona horaria para logs correctos
       - TZ=${TZ:-America/Mexico_City}
     volumes:
-      # Persistencia de datos (bóveda, configuración, íconos, etc.)
       - ./data:/data
-    # Publicamos puerto local para Cloudflare nativo, Tailscale o LAN
     ports:
-      - "8080:80"
+      - "8080:80" # <-- Esto es vital. Conecta el .deb con Docker
