@@ -10,8 +10,10 @@ set -euo pipefail
 
 # --- CARGAR ENTORNO MISE (PORTABILIDAD) ---
 # Necesario para que start.sh encuentre 'age' si no está instalado globalmente
+export HOME="${HOME:-/home/herwingx}"
 export MISE_DATA_DIR="$HOME/.local/share/mise"
 export PATH="$HOME/.local/bin:$PATH"
+cd "$(dirname "$(dirname "${BASH_SOURCE[0]}")")" || exit 1
 eval "$(mise activate bash)" 2>/dev/null || true
 
 # --- CONFIGURACIÓN DE COLORES ---

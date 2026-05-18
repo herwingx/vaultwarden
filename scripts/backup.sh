@@ -9,9 +9,19 @@
 
 set -euo pipefail
 
+# --- CONFIGURACIÓN DE DIRECTORIOS ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+DATA_DIR="$PROJECT_DIR/data"
+SECRETS_FILE="$PROJECT_DIR/.env.age"
+LOG_FILE="/var/log/vaultwarden_backup.log"
+CONTAINER_NAME="vaultwarden"
+
 # --- CARGAR ENTORNO MISE (PORTABILIDAD) ---
+export HOME="${HOME:-/home/herwingx}"
 export MISE_DATA_DIR="$HOME/.local/share/mise"
 export PATH="$HOME/.local/bin:$PATH"
+cd "$PROJECT_DIR" || exit 1
 eval "$(mise activate bash)" 2>/dev/null || true
 
 # --- CONFIGURACIÓN DE COLORES ---
@@ -23,14 +33,6 @@ MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
-
-# --- CONFIGURACIÓN DE DIRECTORIOS ---
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-DATA_DIR="$PROJECT_DIR/data"
-SECRETS_FILE="$PROJECT_DIR/.env.age"
-LOG_FILE="/var/log/vaultwarden_backup.log"
-CONTAINER_NAME="vaultwarden"
 
 # Ajuste de log si no hay permisos
 if [[ ! -w "$(dirname "$LOG_FILE")" ]]; then
