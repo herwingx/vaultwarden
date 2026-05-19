@@ -148,8 +148,23 @@ load_secrets() {
     fi
 
     while IFS='=' read -r key value || [[ -n "$key" ]]; do
-        [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
-        export "$(echo "$key" | xargs)=$(echo "$value" | xargs)"
+        # Eliminar espacios en blanco alrededor de la clave
+        key="${key#"${key%%[![:space:]]*}"}"
+        key="${key%"${key##*[![:space:]]}"}"
+        
+        # Ignorar comentarios y líneas vacías
+        [[ -z "$key" || "$key" =~ ^# ]] && continue
+        
+        # Eliminar espacios en blanco alrededor del valor
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+        
+        # Eliminar comillas externas si existen
+        if [[ "$value" =~ ^\"(.*)\"$ || "$value" =~ ^\'(.*)\'$ ]]; then
+            value="${BASH_REMATCH[1]}"
+        fi
+        
+        export "$key"="$value"
     done <<< "$DECRYPTED"
     
     log_success "Secretos cargados."
@@ -298,7 +313,7 @@ upload_to_cloud() {
     if rclone copy "$BACKUP_ENCRYPTED" "$remote"; then
         log_success "Carga completa."
         log_info "Limpiando antiguos (>${retention} días)..."
-        rclone delete --min-age "${retention}d" "$remote" 2>/dev/null || true
+        rclone delete --min-age "${retention}d" --include "vw_backup_*.tar.gz.age" "$remote" 2>/dev/null || true
     else
         log_error "Fallo Rclone."
         return 1

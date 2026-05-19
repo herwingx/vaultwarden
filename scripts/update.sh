@@ -101,6 +101,8 @@ decrypt_to_env
 cd "$PROJECT_DIR"
 
 log_info "Descargando últimas imágenes..."
+export UID=$(id -u)
+export GID=$(id -g)
 docker compose pull
 
 log_info "Recreando contenedores con las nuevas imágenes..."

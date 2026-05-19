@@ -3,6 +3,7 @@ services:
     image: vaultwarden/server:latest
     container_name: vaultwarden
     restart: always
+    user: "${UID:-1000}:${GID:-1000}" # <-- Evita que los archivos en ./data sean de root y rompan backups/restores
     environment:
       - DOMAIN=${DOMAIN}
       - SIGNUPS_ALLOWED=${SIGNUPS_ALLOWED:-false}
@@ -13,3 +14,4 @@ services:
       - ./data:/data
     ports:
       - "127.0.0.1:8080:80" # <-- Esto es vital. Solo acepta tráfico local del túnel Cloudflare
+

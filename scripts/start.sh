@@ -110,7 +110,10 @@ trap cleanup EXIT
 
 decrypt_to_env
 
-log_info "Iniciando orquestación Docker..."
+log_info "Iniciando orquestación Docker (UID=$(id -u))..."
+export UID=$(id -u)
+export GID=$(id -g)
+
 cd "$PROJECT_DIR"
 docker compose up -d
 
@@ -119,3 +122,4 @@ docker compose ps
 echo ""
 log_success "Vaultwarden está operativo."
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
+

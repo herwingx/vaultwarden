@@ -227,9 +227,9 @@ setup_cron() {
     fi
 
     if [[ -n "$CURRENT_CRON" ]]; then
-        echo -e "${CURRENT_CRON}\n${CRON_ENTRY}" | crontab -
+        printf "%s\n%s\n" "$CURRENT_CRON" "$CRON_ENTRY" | crontab -
     else
-        echo "$CRON_ENTRY" | crontab -
+        printf "%s\n" "$CRON_ENTRY" | crontab -
     fi
 
     log_success "Backup programado correctamente: ${BOLD}$schedule${NC}"
@@ -265,9 +265,9 @@ setup_cron_update() {
     fi
 
     if [[ -n "$CURRENT_CRON" ]]; then
-        echo -e "${CURRENT_CRON}\n${CRON_ENTRY}" | crontab -
+        printf "%s\n%s\n" "$CURRENT_CRON" "$CRON_ENTRY" | crontab -
     else
-        echo "$CRON_ENTRY" | crontab -
+        printf "%s\n" "$CRON_ENTRY" | crontab -
     fi
 
     log_success "Actualización de Vaultwarden programada: ${BOLD}$schedule${NC} (ver: $log_path)"

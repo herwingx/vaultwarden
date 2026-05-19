@@ -174,22 +174,72 @@ decrypt_secrets() {
 
 edit_secrets() {
     check_age
-    local TEMP_FILE
-    TEMP_FILE=$(mktemp)
-    trap "rm -f $TEMP_FILE" EXIT
     
     local AGE_KEY
     AGE_KEY=$(find_age_key) || true
     
-    if [[ -n "$AGE_KEY" ]]; then
-        age -d -i "$AGE_KEY" -o "$TEMP_FILE" "$ENCRYPTED_FILE"
-        ${EDITOR:-nano} "$TEMP_FILE"
-        local PUB_KEY
-        PUB_KEY=$(get_public_key "$AGE_KEY")
-        age -r "$PUB_KEY" -o "$ENCRYPTED_FILE" "$TEMP_FILE"
-        log_success "Cambios aplicados y re-cifrados."
-    else
+    if [[ -z "$AGE_KEY" ]]; then
         log_error "No se puede editar sin clave de identidad."
+        exit 1
+    fi
+
+    # Crear temporales seguros
+    local TEMP_DECRYPTED
+    TEMP_DECRYPTED=$(mktemp)
+    local TEMP_ENCRYPTED
+    TEMP_ENCRYPTED=$(mktemp)
+    trap "rm -f $TEMP_DECRYPTED $TEMP_ENCRYPTED" EXIT
+
+    log_info "Descifrando secretos para edición..."
+    if [[ -f "$ENCRYPTED_FILE" ]]; then
+        if ! age -d -i "$AGE_KEY" -o "$TEMP_DECRYPTED" "$ENCRYPTED_FILE" 2>/dev/null; then
+            log_error "Fallo al descifrar $ENCRYPTED_FILE. ¿Es correcta tu clave AGE?"
+            exit 1
+        fi
+    else
+        # Si no existe .env.age, inicializar con la plantilla o vacío
+        if [[ -f "$SECRETS_FILE" ]]; then
+            cp "$SECRETS_FILE" "$TEMP_DECRYPTED"
+        elif [[ -f "$PROJECT_DIR/.env.example" ]]; then
+            cp "$PROJECT_DIR/.env.example" "$TEMP_DECRYPTED"
+        else
+            touch "$TEMP_DECRYPTED"
+        fi
+    fi
+
+    # Copiar estado inicial para detectar si hubo cambios
+    local INITIAL_SHA
+    INITIAL_SHA=$(sha256sum "$TEMP_DECRYPTED" | cut -d' ' -f1)
+
+    # Abrir editor
+    ${EDITOR:-nano} "$TEMP_DECRYPTED"
+
+    # Verificar si el editor se canceló o falló
+    if [[ $? -ne 0 ]]; then
+        log_warning "El editor retornó un estado de error. Edición abortada."
+        return 1
+    fi
+
+    local FINAL_SHA
+    FINAL_SHA=$(sha256sum "$TEMP_DECRYPTED" | cut -d' ' -f1)
+
+    if [[ "$INITIAL_SHA" == "$FINAL_SHA" ]]; then
+        log_info "No se detectaron cambios. Edición cancelada."
+        return 0
+    fi
+
+    # Cifrar primero al archivo temporal cifrado para validar que sea correcto
+    local PUB_KEY
+    PUB_KEY=$(get_public_key "$AGE_KEY")
+    
+    log_info "Cifrando nuevos secretos..."
+    if age -r "$PUB_KEY" -o "$TEMP_ENCRYPTED" "$TEMP_DECRYPTED"; then
+        # Operación atómica de reemplazo (Segura frente a cortes de luz/caídas)
+        mv "$TEMP_ENCRYPTED" "$ENCRYPTED_FILE"
+        log_success "Cambios aplicados y re-cifrados exitosamente en .env.age."
+    else
+        log_error "Fallo al cifrar los nuevos secretos. Tus secretos originales no han sido alterados."
+        exit 1
     fi
 }
 
